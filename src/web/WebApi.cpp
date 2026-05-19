@@ -1,0 +1,261 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// WebApi.cpp
+// ─────────────────────────────────────────────────────────────────────────────
+
+#include "WebApi.h"
+#include <ArduinoJson.h>
+#include <WiFi.h>
+#include "../config.h"
+
+// ── LogRingBuffer ─────────────────────────────────────────────────────────────
+
+String LogRingBuffer::toJson() const {
+    JsonDocument doc;
+    JsonArray arr = doc.to<JsonArray>();
+    for (uint8_t i = 0; i < count; i++) {
+        arr.add(lines[(head - count + i + CAPACITY) % CAPACITY]);
+    }
+    String out;
+    serializeJson(doc, out);
+    return out;
+}
+
+// ── WebApi ────────────────────────────────────────────────────────────────────
+
+WebApi::WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota)
+    : _diag(diag), _display(display), _ota(ota)
+{}
+
+void WebApi::begin() {
+    _registerDisplayRoutes();
+#if CONFIG_X4_DIAG_HTTP_API
+    _registerDevRoutes();
+#endif
+    // Root
+    _server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+        req->send(200, "text/plain", "Pocket Shrine");
+    });
+    _server.begin();
+}
+
+void WebApi::pushLog(const String& line) {
+    _logs.push(line);
+}
+
+// ── /api/display/* — always available ────────────────────────────────────────
+
+void WebApi::_registerDisplayRoutes() {
+    // GET /api/display/status
+    _server.on("/api/display/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        _diag.refresh();
+        JsonDocument doc;
+        JsonObject obj = doc.to<JsonObject>();
+        JsonObject disp = obj["display"].to<JsonObject>();
+        const X4DisplayStatus& s = _display.status();
+        disp["driver"]          = s.driverName;
+        disp["initialized"]     = s.initialized;
+        disp["lastRefreshMs"]   = s.lastRefreshMs;
+        disp["lastRefreshType"] = s.lastRefreshType;
+        if (s.lastError) disp["lastError"] = s.lastError;
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // GET /api/display/screenshot.bmp — 1-bit BMP from framebuffer
+    _server.on("/api/display/screenshot.bmp", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        uint16_t w = _display.width();
+        uint16_t h = _display.height();
+        uint16_t rowBytes = (w + 7) / 8;
+        // BMP file: 14-byte file header + 40-byte DIB header
+        uint32_t dataSize   = rowBytes * h;
+        uint32_t fileSize   = 54 + 8 + dataSize; // +8 for 2-color palette
+        uint8_t* bmp = (uint8_t*)malloc(fileSize);
+        if (!bmp) { req->send(500, "text/plain", "OOM"); return; }
+        memset(bmp, 0, fileSize);
+
+        // File header
+        bmp[0] = 'B'; bmp[1] = 'M';
+        bmp[2] = fileSize & 0xFF; bmp[3] = (fileSize >> 8) & 0xFF;
+        bmp[4] = (fileSize >> 16) & 0xFF; bmp[5] = (fileSize >> 24) & 0xFF;
+        bmp[10] = 62; // pixel data offset = 54 + 8
+
+        // DIB header (BITMAPINFOHEADER)
+        bmp[14] = 40;
+        bmp[18] = w & 0xFF; bmp[19] = (w >> 8) & 0xFF;
+        // BMP height is negative for top-down
+        int32_t negH = -(int32_t)h;
+        memcpy(&bmp[22], &negH, 4);
+        bmp[26] = 1; bmp[27] = 0;  // color planes
+        bmp[28] = 1; bmp[29] = 0;  // bits per pixel
+        bmp[34] = dataSize & 0xFF; bmp[35] = (dataSize >> 8) & 0xFF;
+
+        // Color table: index 0 = black, index 1 = white
+        bmp[54] = 0x00; bmp[55] = 0x00; bmp[56] = 0x00; bmp[57] = 0x00;
+        bmp[58] = 0xFF; bmp[59] = 0xFF; bmp[60] = 0xFF; bmp[61] = 0x00;
+
+        // Pixel data — framebuffer is already 1bpp, 1=white 0=black
+        const uint8_t* fb = _display.getFrameBuffer();
+        memcpy(&bmp[62], fb, dataSize);
+
+        AsyncWebServerResponse* resp = req->beginResponse_P(
+            200, "image/bmp", bmp, fileSize);
+        req->send(resp);
+        free(bmp);
+    });
+
+    // POST /api/display/test-pattern  body: {"pattern":"checkerboard"}
+    _server.on("/api/display/test-pattern", HTTP_POST,
+        [](AsyncWebServerRequest*) {},
+        nullptr,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+                req->send(400, "text/plain", "bad json");
+                return;
+            }
+            const char* pattern = doc["pattern"] | "checkerboard";
+            bool ok = _display.renderTestPattern(pattern);
+            req->send(ok ? 200 : 404, "text/plain", ok ? "ok" : "unknown pattern");
+        }
+    );
+
+    // POST /api/display/refresh/full
+    _server.on("/api/display/refresh/full", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        _display.fullRefresh();
+        req->send(200, "text/plain", "ok");
+    });
+
+    // POST /api/display/refresh/partial  body: {"x":0,"y":0,"w":100,"h":100}
+    _server.on("/api/display/refresh/partial", HTTP_POST,
+        [](AsyncWebServerRequest*) {},
+        nullptr,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+                req->send(400, "text/plain", "bad json");
+                return;
+            }
+            uint16_t x = doc["x"] | 0;
+            uint16_t y = doc["y"] | 0;
+            uint16_t w = doc["w"] | 100;
+            uint16_t h = doc["h"] | 100;
+            _display.partialRefresh(x, y, w, h);
+            req->send(200, "text/plain", "ok");
+        }
+    );
+
+    // POST /api/display/clear
+    _server.on("/api/display/clear", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        _display.clear();
+        req->send(200, "text/plain", "ok");
+    });
+}
+
+// ── /api/dev/* — development only ────────────────────────────────────────────
+
+#if CONFIG_X4_DIAG_HTTP_API
+void WebApi::_registerDevRoutes() {
+    // GET /api/dev/status — full X4Diagnostics JSON
+    _server.on("/api/dev/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        _diag.refresh();
+        JsonDocument doc;
+        JsonObject obj = doc.to<JsonObject>();
+        _diag.toJson(obj);
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // GET /api/dev/health
+    _server.on("/api/dev/health", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        _diag.refresh();
+        JsonDocument doc;
+        JsonObject obj = doc.to<JsonObject>();
+        bool allOk = _diag.display.initialized && _diag.storageReady &&
+                     _diag.batteryPercent > 0 && !_diag.safeModeActive;
+        obj["ok"] = allOk;
+        JsonObject checks = obj["checks"].to<JsonObject>();
+        checks["display"]   = _diag.display.initialized;
+        checks["storage"]   = _diag.storageReady;
+        checks["battery"]   = (_diag.batteryPercent > 0);
+        checks["safeMode"]  = _diag.safeModeActive;
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // GET /api/dev/logs
+    _server.on("/api/dev/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        req->send(200, "application/json", _logs.toJson());
+    });
+
+    // GET /api/dev/ota
+    _server.on("/api/dev/ota", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        _diag.refresh();
+        JsonDocument doc;
+        JsonObject obj = doc.to<JsonObject>();
+        obj["currentSlot"]       = _diag.otaCurrentSlot;
+        obj["pendingVerify"]     = _diag.otaPendingVerify;
+        obj["rollbackAvailable"] = _diag.otaRollbackAvailable;
+        obj["firmwareVersion"]   = _diag.firmwareVersion;
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // GET /api/dev/display — same as /api/display/status but under dev path
+    _server.on("/api/dev/display", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        _diag.refresh();
+        JsonDocument doc;
+        JsonObject obj = doc.to<JsonObject>();
+        const X4DisplayStatus& s = _display.status();
+        obj["driver"]          = s.driverName;
+        obj["initialized"]     = s.initialized;
+        obj["lastRefreshMs"]   = s.lastRefreshMs;
+        obj["lastRefreshType"] = s.lastRefreshType;
+        if (s.lastError) obj["lastError"] = s.lastError;
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // POST /api/dev/ota/check — fetch manifest and return result
+    _server.on("/api/dev/ota/check", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        OtaManifest m = _ota.fetchManifest();
+        JsonDocument doc;
+        JsonObject obj = doc.to<JsonObject>();
+        obj["valid"]   = m.valid;
+        if (m.valid) {
+            obj["version"] = m.version;
+            obj["channel"] = m.channel;
+            obj["notes"]   = m.notes;
+        }
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // POST /api/dev/ota/apply — download and flash
+    _server.on("/api/dev/ota/apply", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        OtaManifest m = _ota.fetchManifest();
+        OtaResult r = _ota.applyUpdate(m, _diag.batteryPercent);
+        req->send(200, "text/plain", OtaManager::resultString(r));
+        // If OK, applyUpdate() already called esp_restart()
+    });
+
+    // POST /api/dev/ota/rollback
+    _server.on("/api/dev/ota/rollback", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        req->send(200, "text/plain", "rolling back...");
+        delay(200);
+        _ota.requestRollback();
+    });
+
+    // POST /api/dev/reboot
+    _server.on("/api/dev/reboot", HTTP_POST, [](AsyncWebServerRequest* req) {
+        req->send(200, "text/plain", "rebooting...");
+        delay(200);
+        ESP.restart();
+    });
+}
+#endif // CONFIG_X4_DIAG_HTTP_API
