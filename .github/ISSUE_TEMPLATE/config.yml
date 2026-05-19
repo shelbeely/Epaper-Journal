@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Building & flashing guide
+    url: https://github.com/shelbeely/Epaper-Journal/blob/main/docs/building.md
+    about: See the full build, flash, and OTA workflow documentation before opening an issue.

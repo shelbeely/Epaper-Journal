@@ -1,0 +1,74 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a new feature.
+        Check the project phases in the README first — the feature may already be planned.
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Target phase
+      description: Which project phase does this belong to?
+      options:
+        - "Phase 0 — Hardware-Safe Prototype"
+        - "Phase 1 — Plaintext Diary"
+        - "Phase 2 — Web Editor"
+        - "Phase 3 — Real Journal UX"
+        - "Phase 4 — Privacy Mode"
+        - "Phase 5 — Companion Tools"
+        - "Cross-cutting / Infrastructure"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Affected layer(s)
+      description: Select all that apply.
+      multiple: true
+      options:
+        - "Layer 0 — Scaffolding"
+        - "Layer 1 — Safety / OTA"
+        - "Layer 2 — Diagnostics"
+        - "Layer 3 — Display"
+        - "Layer 4 — Input"
+        - "Layer 5 — Storage"
+        - "Web API"
+        - "Tools / CI"
+        - "Documentation"
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this feature solve, or what use case does it enable?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you've thought about?
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints to keep in mind
+      options:
+        - label: Must not expose Wi-Fi credentials or secrets in any API or log
+        - label: Must not break OTA rollback safety
+        - label: E-paper UI — prefer full-screen refreshes, avoid animations

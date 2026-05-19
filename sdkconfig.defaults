@@ -1,0 +1,21 @@
+# ESP-IDF sdkconfig overrides for Xteink X4 Journal firmware
+#
+# These are applied on top of the arduino-esp32 defaults.
+# Adjust as needed when the official Xteink X4 board target is available.
+
+# NVS encryption disabled for MVP
+CONFIG_NVS_ENCRYPTION=n
+
+# Task watchdog — enabled, 10 second timeout
+CONFIG_ESP_TASK_WDT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
+# Allow the main task to trigger the watchdog
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+
+# Increase main task stack for JSON + OTA operations
+CONFIG_ARDUINO_LOOP_STACK_SIZE=16384
+
+# HTTPS / TLS — mbedTLS with certificate bundle for OTA manifest fetch
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
