@@ -1,0 +1,75 @@
+name: Build Firmware
+
+on:
+  push:
+    branches:
+      - main
+      - "copilot/**"
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+
+jobs:
+  build:
+    name: PlatformIO Build (${{ matrix.env }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, release]
+
+    steps:
+      - name: Checkout repository (with community-sdk submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO Core
+        run: |
+          pip install --upgrade pip
+          pip install platformio
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .pio
+          key: ${{ runner.os }}-pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-${{ matrix.env }}-
+            ${{ runner.os }}-pio-
+
+      - name: Inject git commit hash into build flags
+        run: |
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "GIT_COMMIT=$COMMIT" >> "$GITHUB_ENV"
+
+      - name: Build firmware (${{ matrix.env }})
+        run: |
+          pio run -e "${{ matrix.env }}" \
+            --project-option="build_flags=-DFIRMWARE_COMMIT=\"${GIT_COMMIT}\""
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.env }}-${{ github.sha }}
+          path: .pio/build/${{ matrix.env }}/firmware.bin
+          retention-days: 30

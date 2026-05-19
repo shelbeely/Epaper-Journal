@@ -1,0 +1,51 @@
+name: "Copilot Setup Steps"
+
+# Run automatically when the file changes, and allow manual validation.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # Job MUST be named exactly `copilot-setup-steps`.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read  # needed to checkout the repo + submodules
+
+    steps:
+      # ── 1. Checkout with submodules ────────────────────────────────────────
+      - name: Checkout repository (with community-sdk submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # pulls open-x4-sdk automatically
+
+      # ── 2. Python (required by PlatformIO) ────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── 3. Install PlatformIO Core ────────────────────────────────────────
+      - name: Install PlatformIO Core
+        run: |
+          pip install --upgrade pip
+          pip install platformio
+
+      # ── 4. Pre-fetch all PlatformIO library dependencies ──────────────────
+      # Running `pio pkg install` resolves and caches all lib_deps listed in
+      # platformio.ini so that Copilot doesn't have to wait for downloads.
+      - name: Pre-install PlatformIO dependencies (dev env)
+        run: pio pkg install -e dev
+
+      - name: Pre-install PlatformIO dependencies (release env)
+        run: pio pkg install -e release
+
+      # ── 5. Install helper tools used by tools/ scripts ────────────────────
+      - name: Install curl and jq (used by agent_*.sh scripts)
+        run: sudo apt-get install -y curl jq

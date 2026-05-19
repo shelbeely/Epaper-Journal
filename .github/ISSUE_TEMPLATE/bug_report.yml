@@ -1,0 +1,72 @@
+name: Bug Report
+description: Report a firmware or software bug
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+        Please fill in as much detail as possible so we can reproduce and fix the issue.
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Build environment
+      options:
+        - dev
+        - release
+        - unknown
+    validations:
+      required: true
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: Firmware version / commit
+      description: "Found in Serial output as `[X4:BOOT_START]` line, or from `/api/dev/status`"
+      placeholder: "e.g. 0.1.0 / abc1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware
+      options:
+        - Xteink X4 (physical device)
+        - PlatformIO host build / simulation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Flash firmware
+        2. Power on device
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: serial_log
+    attributes:
+      label: Serial log output
+      description: Paste relevant `[X4:...]` markers and any error output (remove Wi-Fi credentials).
+      render: text
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Screenshots, photos of hardware, etc.

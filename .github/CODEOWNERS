@@ -1,0 +1,22 @@
+# CODEOWNERS — Xteink X4 Epaper Journal
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+*  @shelbeely
+
+# PlatformIO / build configuration
+platformio.ini         @shelbeely
+partitions_ota.csv     @shelbeely
+sdkconfig.defaults     @shelbeely
+.github/               @shelbeely
+
+# Hardware-facing code — requires careful review
+src/display/           @shelbeely
+src/input/             @shelbeely
+src/storage/           @shelbeely
+
+# Safety-critical code — OTA and rollback
+src/ota/               @shelbeely
+
+# community-sdk submodule — changes here are pinned, not free-edited
+open-x4-sdk/           @shelbeely

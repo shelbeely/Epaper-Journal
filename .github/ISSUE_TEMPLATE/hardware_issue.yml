@@ -1,0 +1,61 @@
+name: Hardware Issue
+description: Report a problem specific to the Xteink X4 hardware (display, buttons, battery, SD card)
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues that appear to be hardware-related
+        (e.g. display not refreshing, buttons not registering, SD card not mounting).
+
+  - type: checkboxes
+    id: component
+    attributes:
+      label: Affected hardware component(s)
+      options:
+        - label: E-paper display (SSD1677)
+        - label: Button ADC input
+        - label: SD card / SDCardManager
+        - label: Battery monitor / ADC
+        - label: Wi-Fi / antenna
+        - label: Power / deep sleep
+        - label: Other
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: Firmware version / commit
+      placeholder: "e.g. 0.1.0 / abc1234"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue description
+      description: What is the hardware doing (or not doing)?
+    validations:
+      required: true
+
+  - type: textarea
+    id: serial_log
+    attributes:
+      label: Relevant serial log output
+      description: Paste `[X4:...]` markers around the failure (remove any credentials).
+      render: text
+
+  - type: textarea
+    id: wiring
+    attributes:
+      label: Wiring / hardware notes
+      description: |
+        Note any modifications to the standard Xteink X4 hardware.
+        Standard pins for reference:
+        - EPD: SCLK=8, MOSI=10, CS=21, DC=4, RST=5, BUSY=6
+        - Buttons: ADC pin 1=1, pin 2=2, Power=3
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Photos, oscilloscope traces, or other diagnostic data.
