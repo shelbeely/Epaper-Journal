@@ -12,6 +12,12 @@
 #include "../diagnostics/X4Log.h"
 #include "../diagnostics/X4Diagnostics.h"
 
+// ── Font constants (used by UI screens that include X4Display.h) ─────────────
+static constexpr uint8_t FONT5X7_GLYPH_W = 5;   // pixel columns per glyph
+static constexpr uint8_t FONT5X7_GLYPH_H = 7;   // pixel rows per glyph
+static constexpr uint8_t FONT5X7_ADVANCE  = 6;   // pixels per character (glyph + gap)
+static constexpr uint8_t FONT5X7_LINE_H   = 9;   // line height (glyph + leading)
+
 class X4Display {
 public:
     X4Display();
@@ -46,6 +52,26 @@ public:
     void renderPartialRefreshRect();
     // Select a pattern by name string
     bool renderTestPattern(const char* name);
+
+    // ── Font rendering ───────────────────────────────────────────────────────
+    // Draw a single character. `scale` multiplies each pixel (1 = native 5×7).
+    // `inverted` swaps black/white (for selection highlights).
+    void drawChar(uint8_t* fb, uint16_t x, uint16_t y, char c,
+                  bool inverted = false, uint8_t scale = 1);
+
+    // Draw a string (single line, no wrapping). Clips at display edge.
+    void drawText(uint8_t* fb, uint16_t x, uint16_t y, const char* str,
+                  bool inverted = false, uint8_t scale = 1);
+
+    // Draw a string with word-wrapping within `maxW` pixels from `x`.
+    // Returns the y coordinate immediately after the last drawn line.
+    uint16_t drawTextWrapped(uint8_t* fb, uint16_t x, uint16_t startY,
+                             uint16_t maxW, const char* str,
+                             bool inverted = false, uint8_t scale = 1);
+
+    // Fill a rectangle. `black` = fill with black (0), false = white (1).
+    void fillRect(uint8_t* fb, uint16_t x, uint16_t y,
+                  uint16_t w, uint16_t h, bool black);
 
     // Diagnostics snapshot
     const X4DisplayStatus& status() const { return _status; }

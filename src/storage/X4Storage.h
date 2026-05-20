@@ -31,6 +31,9 @@ public:
     // List entries under /journal/YYYY/MM/
     std::vector<String> listEntries(uint16_t year, uint8_t month);
 
+    // Delete an entry at path. Returns false on failure.
+    bool deleteEntry(const char* path);
+
     // Expose raw SdMan for direct access when needed
     SDCardManager& raw() { return SdMan; }
 

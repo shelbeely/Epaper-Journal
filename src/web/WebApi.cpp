@@ -6,6 +6,8 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include "../config.h"
+#include "../journal/JournalManager.h"
+#include "../journal/JournalFrontmatter.h"
 
 // ── LogRingBuffer ─────────────────────────────────────────────────────────────
 
@@ -22,12 +24,14 @@ String LogRingBuffer::toJson() const {
 
 // ── WebApi ────────────────────────────────────────────────────────────────────
 
-WebApi::WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota)
-    : _diag(diag), _display(display), _ota(ota)
+WebApi::WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota,
+               JournalManager& jm)
+    : _diag(diag), _display(display), _ota(ota), _jm(jm)
 {}
 
 void WebApi::begin() {
     _registerDisplayRoutes();
+    _registerJournalRoutes();
 #if CONFIG_X4_DIAG_HTTP_API
     _registerDevRoutes();
 #endif
@@ -149,6 +153,80 @@ void WebApi::_registerDisplayRoutes() {
     _server.on("/api/display/clear", HTTP_POST, [this](AsyncWebServerRequest* req) {
         _display.clear();
         req->send(200, "text/plain", "ok");
+    });
+}
+
+// ── /api/journal/* ────────────────────────────────────────────────────────────
+
+void WebApi::_registerJournalRoutes() {
+    // GET /api/journal/entries?year=YYYY&month=MM
+    _server.on("/api/journal/entries", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        uint16_t year  = req->hasParam("year")  ? (uint16_t)req->getParam("year")->value().toInt()  : 0;
+        uint8_t  month = req->hasParam("month") ? (uint8_t) req->getParam("month")->value().toInt() : 0;
+        auto paths = _jm.listEntries(year, month);
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (auto& path : paths) {
+            JournalEntry e;
+            if (_jm.loadEntry(path, e)) {
+                JsonObject obj = arr.add<JsonObject>();
+                obj["path"]  = path;
+                obj["title"] = e.title;
+                obj["date"]  = e.date;
+            }
+        }
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // GET /api/journal/entry?path=<path>
+    _server.on("/api/journal/entry", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (!req->hasParam("path")) {
+            req->send(400, "text/plain", "missing path");
+            return;
+        }
+        String path = req->getParam("path")->value();
+        String content = _jm.readEntryRaw(path);
+        if (content.isEmpty()) {
+            req->send(404, "text/plain", "not found");
+            return;
+        }
+        req->send(200, "text/markdown", content);
+    });
+
+    // POST /api/journal/entry  body: {"path":"...","content":"..."}
+    _server.on("/api/journal/entry", HTTP_POST,
+        [](AsyncWebServerRequest*) {},
+        nullptr,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+                req->send(400, "text/plain", "bad json");
+                return;
+            }
+            String path    = doc["path"].as<String>();
+            String content = doc["content"].as<String>();
+            if (path.isEmpty() || content.isEmpty()) {
+                req->send(400, "text/plain", "missing path or content");
+                return;
+            }
+            JournalEntry e;
+            JournalFrontmatter::parse(content, e);
+            bool ok = _jm.saveEntry(path, e);
+            req->send(ok ? 200 : 500, "text/plain", ok ? "ok" : "write failed");
+        }
+    );
+
+    // DELETE /api/journal/entry?path=<path>
+    _server.on("/api/journal/entry", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+        if (!req->hasParam("path")) {
+            req->send(400, "text/plain", "missing path");
+            return;
+        }
+        String path = req->getParam("path")->value();
+        bool ok = _jm.deleteEntry(path);
+        req->send(ok ? 200 : 404, "text/plain", ok ? "ok" : "not found or delete failed");
     });
 }
 

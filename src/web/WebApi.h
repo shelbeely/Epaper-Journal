@@ -2,8 +2,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // WebApi.h — HTTP API server
 //
-// Always-available display endpoints: /api/display/*
-// Dev-only endpoints:                 /api/dev/*  (CONFIG_X4_DIAG_HTTP_API)
+// Always-available display endpoints:  /api/display/*
+// Always-available journal endpoints:  /api/journal/*
+// Dev-only endpoints:                  /api/dev/*  (CONFIG_X4_DIAG_HTTP_API)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <Arduino.h>
@@ -11,6 +12,9 @@
 #include "../diagnostics/X4Diagnostics.h"
 #include "../display/X4Display.h"
 #include "../ota/OtaManager.h"
+
+// Forward declaration — include JournalManager.h only in WebApi.cpp
+class JournalManager;
 
 // A minimal ring buffer for the last N log lines (dev builds only)
 struct LogRingBuffer {
@@ -32,7 +36,8 @@ struct LogRingBuffer {
 class WebApi {
 public:
     // Pass references to shared objects; WebApi does not own them.
-    WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota);
+    WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota,
+           JournalManager& jm);
 
     // Start the HTTP server (call after Wi-Fi is up).
     void begin();
@@ -45,9 +50,11 @@ private:
     X4Diagnostics& _diag;
     X4Display&     _display;
     OtaManager&    _ota;
+    JournalManager& _jm;
     LogRingBuffer  _logs;
 
     void _registerDisplayRoutes();
+    void _registerJournalRoutes();
 
 #if CONFIG_X4_DIAG_HTTP_API
     void _registerDevRoutes();

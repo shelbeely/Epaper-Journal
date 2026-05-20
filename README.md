@@ -10,8 +10,8 @@ An Arduino/PlatformIO firmware for the **Xteink X4** e-paper device that turns i
 
 | Phase | Status | Description |
 |---|---|---|
-| **0 — Hardware Prototype** | 🚧 In progress | Display, buttons, SD card, Wi-Fi soft-AP, OTA scaffold |
-| **1 — Plaintext Diary** | 📋 Planned | YAML-frontmatter Markdown entries, browse UI, export |
+| **0 — Hardware Prototype** | ✅ Complete | Display, buttons, SD card, Wi-Fi soft-AP, OTA scaffold |
+| **1 — Plaintext Diary** | 🚧 In progress | YAML-frontmatter Markdown entries, browse UI, export |
 | **2 — Web Editor** | 📋 Planned | Soft-AP "Pocket Shrine" with in-browser Markdown editor |
 | **3 — Journal UX** | 📋 Planned | Prompt packs, streak calendar, sleep screen |
 | **4 — Privacy Mode** | 📋 Planned | AES-GCM encrypted vault via mbedTLS |
