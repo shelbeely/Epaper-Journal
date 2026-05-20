@@ -15,14 +15,22 @@ class SDCardManager {
 public:
     static SDCardManager& getInstance() { return _instance; }
 
+    // ── Test-control flags ────────────────────────────────────────────────────
+    // Tests may set these to drive specific code paths in the modules under test.
+    // All default to false so that existing tests are unaffected.
+    static bool _stubReady;           // return value for ready()
+    static bool _stubEnsureDir;       // return value for ensureDirectoryExists()
+    static bool _stubWrite;           // return value for writeFile()
+    static String _stubReadContent;   // return value for readFile()
+
     bool begin()        { return false; }
-    bool ready() const  { return false; }
+    bool ready() const  { return _stubReady; }
 
     std::vector<String> listFiles(const char* /*path*/ = "/",
                                   int /*maxFiles*/     = 200) {
         return {};
     }
-    String readFile(const char* /*path*/) { return String(""); }
+    String readFile(const char* /*path*/) { return _stubReadContent; }
     bool   readFileToStream(const char* /*path*/, Print& /*out*/,
                             size_t /*chunkSize*/ = 256) { return false; }
     size_t readFileToBuffer(const char* /*path*/, char* /*buf*/,
@@ -30,9 +38,9 @@ public:
         return 0;
     }
     bool writeFile(const char* /*path*/, const String& /*content*/) {
-        return false;
+        return _stubWrite;
     }
-    bool ensureDirectoryExists(const char* /*path*/) { return false; }
+    bool ensureDirectoryExists(const char* /*path*/) { return _stubEnsureDir; }
 
     FsFile open(const char* /*path*/, oflag_t /*flag*/ = O_RDONLY) {
         return FsFile{};
@@ -67,6 +75,12 @@ private:
 // that includes this header sees an extern declaration, and we rely on the
 // fact that native tests each compile as a single translation unit).
 inline SDCardManager SDCardManager::_instance;
+
+// Stub control flags — all default to false so pre-existing tests are unaffected.
+inline bool   SDCardManager::_stubReady        = false;
+inline bool   SDCardManager::_stubEnsureDir    = false;
+inline bool   SDCardManager::_stubWrite        = false;
+inline String SDCardManager::_stubReadContent;
 
 // Match the macro from the real SDCardManager.h
 #define SdMan SDCardManager::getInstance()

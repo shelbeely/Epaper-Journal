@@ -139,6 +139,41 @@ After flashing a dev build and connecting to Wi-Fi:
 | `/api/display/refresh/partial` | POST | Trigger partial refresh `{"x":0,"y":0,"w":100,"h":100}` |
 | `/api/display/clear` | POST | Clear display |
 
+### Always-available journal API (Phase 2)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | GET | Pocket Shrine SPA — in-browser Markdown journal editor |
+| `/api/journal/entries` | GET | List entries for `?year=YYYY&month=MM` |
+| `/api/journal/entry` | GET | Read raw Markdown entry at `?path=<path>` |
+| `/api/journal/entry` | POST | Save entry — body: `{"path":"...","content":"..."}` |
+| `/api/journal/entry` | DELETE | Delete entry at `?path=<path>` |
+| `/api/journal/new` | POST | Create entry, return `{"path":"..."}` — body (optional): `{"title":"..."}` |
+
+#### `POST /api/journal/new`
+
+Creates a new journal entry on the SD card using the current timestamp as the
+filename, then returns the full path so the browser can immediately open the editor.
+
+```bash
+# Create a new entry (no body required — defaults to "New Entry")
+curl -X POST http://192.168.4.1/api/journal/new \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My First Entry"}'
+# → 201  {"path":"/journal/2026/05/20260520-103000.md"}
+```
+
+## Web UI build step
+
+The Pocket Shrine SPA (`data/index.html`) is gzip-compressed and embedded in
+flash as a C byte array in `src/web/ui_bundle.h`.  The header is auto-generated
+before each `dev` / `release` build via the PlatformIO `extra_scripts` hook:
+
+```bash
+# Regenerate manually after editing data/index.html:
+python3 tools/embed_ui.py
+```
+
 ## community-sdk
 
 The firmware depends on the [OpenX4 E-Paper Community SDK](https://github.com/open-x4-epaper/community-sdk)
