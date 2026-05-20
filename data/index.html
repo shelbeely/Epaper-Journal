@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.json">
-<title>Pocket Shrine</title>
+  <title>eJournal</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:sans-serif;background:#f5f0e8;color:#222;height:100vh;display:flex;flex-direction:column}
@@ -61,7 +61,7 @@ main{flex:1;overflow:hidden;display:flex}
 </head>
 <body>
 <header>
-  <h1>&#128211; Pocket Shrine</h1>
+  <h1>&#128211; eJournal</h1>
   <div style="display:flex;align-items:center;gap:0">
     <div class="nav-month">
       <button class="nav-btn" id="prev-btn">&#8249;</button>
@@ -339,7 +339,7 @@ document.getElementById('gist-btn').onclick=function(){
       if(!Object.keys(gistFiles).length){showMsg('No unlocked entries to backup.',true);return;}
       var url=gistId?'https://api.github.com/gists/'+gistId:'https://api.github.com/gists';
       var method=gistId?'PATCH':'POST';
-      var body={description:'Pocket Shrine Journal Backup',public:false,files:gistFiles};
+      var body={description:'eJournal Backup',public:false,files:gistFiles};
       showMsg('Uploading to GitHub…',false);
       return fetch(url,{method:method,headers:{'Authorization':'token '+token,'Content-Type':'application/json'},body:JSON.stringify(body)})
         .then(function(r){return r.ok?r.json():r.json().then(function(j){return Promise.reject(j.message||'GitHub error');});})
