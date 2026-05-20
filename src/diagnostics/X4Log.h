@@ -34,6 +34,7 @@
 // Wi-Fi
 #define X4M_WIFI_OK                 "WIFI_OK"
 #define X4M_WIFI_FAILED             "WIFI_FAILED"
+#define X4M_WIFI_AP_OK              "WIFI_AP_OK"
 // OTA
 #define X4M_OTA_PENDING_VERIFY      "OTA_PENDING_VERIFY"
 #define X4M_OTA_MARK_VALID          "OTA_MARK_VALID"

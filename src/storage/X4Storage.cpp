@@ -41,6 +41,10 @@ std::vector<String> X4Storage::listEntries(uint16_t year, uint8_t month) {
     return SdMan.listFiles(path);
 }
 
+bool X4Storage::deleteEntry(const char* path) {
+    return SdMan.remove(path);
+}
+
 /*static*/
 void X4Storage::buildJournalPath(char* buf, uint16_t year, uint8_t month) {
     snprintf(buf, 24, "/journal/%04u/%02u/", year, month);

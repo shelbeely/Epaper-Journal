@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "X4Display.h"
+#include "Font5x7.h"
 #include <Arduino.h>
 #include <string.h>
 
@@ -222,4 +223,123 @@ void X4Display::_recordRefresh(const char* type, uint32_t durationMs) {
 void X4Display::_setError(const char* msg) {
     _status.lastError = msg;
     X4_LOG(X4M_DISPLAY_INIT_FAILED);
+}
+
+// ── Font rendering ────────────────────────────────────────────────────────────
+
+void X4Display::drawChar(uint8_t* fb, uint16_t x, uint16_t y, char c,
+                          bool inverted, uint8_t scale) {
+    if (!fb || scale == 0) return;
+    if (c < 0x20 || c > 0x7E) c = ' ';
+    const uint8_t* glyph = FONT5X7[c - 0x20];
+
+    uint16_t dispW  = width();
+    uint16_t dispH  = height();
+    uint16_t wBytes = dispW / 8;
+
+    // Draw FONT5X7_ADVANCE columns (5 glyph + 1 gap)
+    for (uint8_t col = 0; col < FONT5X7_ADVANCE; col++) {
+        uint8_t colData = (col < FONT5X7_GLYPH_W) ? glyph[col] : 0x00;
+        for (uint8_t row = 0; row < FONT5X7_GLYPH_H; row++) {
+            bool pixOn = (colData >> row) & 0x01; // bit0 = top row
+            bool drawBlack = inverted ? !pixOn : pixOn;
+            if (!drawBlack && !inverted) continue; // skip white pixels in normal mode
+            for (uint8_t sy = 0; sy < scale; sy++) {
+                for (uint8_t sx = 0; sx < scale; sx++) {
+                    uint16_t px = x + col * scale + sx;
+                    uint16_t py = y + row * scale + sy;
+                    if (px >= dispW || py >= dispH) continue;
+                    uint16_t byteIdx = py * wBytes + px / 8;
+                    uint8_t  bitMask = 0x80 >> (px % 8);
+                    if (drawBlack) {
+                        fb[byteIdx] &= ~bitMask; // black
+                    } else {
+                        fb[byteIdx] |= bitMask;  // white
+                    }
+                }
+            }
+        }
+    }
+}
+
+void X4Display::drawText(uint8_t* fb, uint16_t x, uint16_t y, const char* str,
+                          bool inverted, uint8_t scale) {
+    if (!fb || !str || scale == 0) return;
+    uint16_t cx = x;
+    uint16_t charAdv = (uint16_t)(FONT5X7_ADVANCE * scale);
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        if (str[i] == '\n') break; // single-line: stop at newline
+        if (cx + charAdv > width()) break; // clip at right edge
+        drawChar(fb, cx, y, str[i], inverted, scale);
+        cx += charAdv;
+    }
+}
+
+uint16_t X4Display::drawTextWrapped(uint8_t* fb, uint16_t x, uint16_t startY,
+                                     uint16_t maxW, const char* str,
+                                     bool inverted, uint8_t scale) {
+    if (!fb || !str || scale == 0 || maxW == 0) return startY;
+    uint16_t charAdv = (uint16_t)(FONT5X7_ADVANCE * scale);
+    uint16_t lineH   = (uint16_t)(FONT5X7_LINE_H   * scale);
+    uint16_t cx = x;
+    uint16_t cy = startY;
+    const char* p = str;
+
+    while (*p) {
+        if (*p == '\n') {
+            cx = x;
+            cy += lineH;
+            p++;
+            continue;
+        }
+        // Find end of current word
+        const char* wordEnd = p;
+        while (*wordEnd && *wordEnd != ' ' && *wordEnd != '\n') wordEnd++;
+        int wordLen = (int)(wordEnd - p);
+        uint16_t wordW = (uint16_t)(wordLen * charAdv);
+
+        // Wrap if word doesn't fit and we're not at the start of the line
+        if (cx + wordW > x + maxW && cx > x) {
+            cx = x;
+            cy += lineH;
+        }
+
+        // Draw the word character by character
+        for (int i = 0; i < wordLen; i++) {
+            if (cx + charAdv > x + maxW) {
+                // Hard-break mid-word
+                cx = x;
+                cy += lineH;
+            }
+            drawChar(fb, cx, cy, p[i], inverted, scale);
+            cx += charAdv;
+        }
+
+        p = wordEnd;
+        if (*p == ' ') {
+            cx += charAdv; // space gap
+            p++;
+        }
+    }
+    return cy + lineH;
+}
+
+void X4Display::fillRect(uint8_t* fb, uint16_t x, uint16_t y,
+                          uint16_t w, uint16_t h, bool black) {
+    if (!fb || w == 0 || h == 0) return;
+    uint16_t dispW  = width();
+    uint16_t dispH  = height();
+    uint16_t wBytes = dispW / 8;
+
+    for (uint16_t py = y; py < y + h && py < dispH; py++) {
+        for (uint16_t px = x; px < x + w && px < dispW; px++) {
+            uint16_t byteIdx = py * wBytes + px / 8;
+            uint8_t  bitMask = 0x80 >> (px % 8);
+            if (black) {
+                fb[byteIdx] &= ~bitMask;
+            } else {
+                fb[byteIdx] |= bitMask;
+            }
+        }
+    }
 }
