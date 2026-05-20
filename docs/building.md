@@ -197,9 +197,66 @@ before the device enters deep sleep. Set a custom timeout:
 -DIDLE_SLEEP_TIMEOUT_MS=180000   ; 3 minutes
 ```
 
+## Phase 4 — Privacy Mode / Encrypted Vault
 
+Phase 4 adds AES-256-GCM encryption for journal entries via the ESP32's mbedTLS library.
 
-The Pocket Shrine SPA (`data/index.html`) is gzip-compressed and embedded in
+### VaultManager (`src/vault/VaultManager.h`)
+
+Key derivation uses **PBKDF2-HMAC-SHA256** (10 000 iterations) against a 16-byte random salt persisted in NVS under the `vault` namespace.
+
+Encrypted file format stored on the SD card:
+```
+---vault-v1---
+<base64(nonce[12] | tag[16] | ciphertext[N])>
+```
+
+The plaintext that is encrypted is the full YAML-frontmatter Markdown file.
+`JournalManager` transparently encrypts on create/save and decrypts on load when the vault is unlocked.
+
+### PIN entry (`src/ui/PinScreen.h`)
+
+Select **[ UNLOCK VAULT ]** from the browse list to open the 4-digit PIN entry UI.
+
+| Button | Action |
+|---|---|
+| Up / Down | Increment / decrement current digit (0–9, wraps) |
+| Left / Right | Move cursor to previous / next digit |
+| Confirm | Submit PIN → derive key → unlock vault |
+| Back | Cancel |
+
+Select **[ LOCK VAULT ]** to immediately zero the in-memory key.
+
+### Vault HTTP API
+
+Three endpoints are always available when the device is on Wi-Fi:
+
+| Method | Path | Body | Description |
+|---|---|---|---|
+| `GET` | `/api/vault/status` | — | `{"locked": true/false}` |
+| `POST` | `/api/vault/unlock` | `{"pin":"1234"}` | Derive key and unlock; returns `{"ok": true}` |
+| `POST` | `/api/vault/lock` | — | Zero the in-memory key; returns `{"ok": true}` |
+
+```bash
+# Check vault state
+curl http://192.168.4.1/api/vault/status
+
+# Unlock (PIN "1234")
+curl -X POST http://192.168.4.1/api/vault/unlock \
+     -H 'Content-Type: application/json' \
+     -d '{"pin":"1234"}'
+
+# Lock
+curl -X POST http://192.168.4.1/api/vault/lock
+```
+
+> **Security note:** The PIN travels over plain HTTP on the soft-AP network. Do not use the same PIN for anything else while the soft-AP is reachable to untrusted devices.
+
+### Locked entries in browse list
+
+When the vault is locked, encrypted entries show `[LOCKED]` as their title in the browse list and cannot be opened or edited. They are safe to browse without revealing any content.
+
+ (`data/index.html`) is gzip-compressed and embedded in
 flash as a C byte array in `src/web/ui_bundle.h`.  The header is auto-generated
 before each `dev` / `release` build via the PlatformIO `extra_scripts` hook:
 

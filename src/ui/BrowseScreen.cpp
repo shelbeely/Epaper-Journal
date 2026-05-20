@@ -4,12 +4,13 @@
 
 #include "BrowseScreen.h"
 #include "../journal/PromptPack.h"
+#include "../vault/VaultManager.h"
 
 BrowseScreen::BrowseScreen(JournalManager& jm, X4Display& display,
                             X4Input& input, X4Clock& clock,
-                            SleepScreen& sleepScreen)
+                            SleepScreen& sleepScreen, VaultManager* vault)
     : _jm(jm), _display(display), _input(input), _clock(clock),
-      _sleepScreen(sleepScreen)
+      _sleepScreen(sleepScreen), _vault(vault)
 {}
 
 BrowseResult BrowseScreen::run(String& outPath) {
@@ -28,6 +29,12 @@ BrowseResult BrowseScreen::run(String& outPath) {
     labels.reserve(paths.size() + FIXED_ITEMS);
     labels.push_back("[ + NEW ENTRY ]");
     labels.push_back("[ STREAK ]");
+    // Vault toggle item (label depends on lock state)
+    if (_vault) {
+        labels.push_back(_vault->isUnlocked() ? "[ LOCK VAULT ]" : "[ UNLOCK VAULT ]");
+    } else {
+        labels.push_back("[ VAULT (N/A) ]");
+    }
     for (auto& p : paths) {
         labels.push_back(_jm.getEntryTitle(p));
     }
@@ -71,6 +78,8 @@ BrowseResult BrowseScreen::run(String& outPath) {
                 return BrowseResult::NEW_ENTRY;
             } else if (selected == 1) {
                 return BrowseResult::CALENDAR;
+            } else if (selected == 2) {
+                return BrowseResult::VAULT_TOGGLE;
             } else {
                 outPath = paths[selected - FIXED_ITEMS];
                 return BrowseResult::OPEN_ENTRY;

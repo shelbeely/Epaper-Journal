@@ -17,6 +17,7 @@
 // Compile the sources under test directly.
 // (build_src_filter = -<*> keeps the native test env clean; we own what
 // gets compiled in each test directory.)
+#include "vault/VaultManager.cpp"          // NOLINT(bugprone-suspicious-include)
 #include "journal/JournalManager.cpp"   // NOLINT(bugprone-suspicious-include)
 #include "storage/X4Storage.cpp"        // NOLINT
 #include "system/X4Clock.cpp"           // NOLINT

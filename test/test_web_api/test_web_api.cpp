@@ -19,6 +19,7 @@
 #include "SDCardManager.h"
 
 // Compile the sources under test directly.
+#include "vault/VaultManager.cpp"          // NOLINT(bugprone-suspicious-include)
 #include "journal/JournalManager.cpp"  // NOLINT(bugprone-suspicious-include)
 #include "storage/X4Storage.cpp"       // NOLINT
 #include "system/X4Clock.cpp"          // NOLINT

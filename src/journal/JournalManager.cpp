@@ -6,8 +6,9 @@
 #include "JournalFrontmatter.h"
 #include <algorithm>
 
-JournalManager::JournalManager(X4Storage& storage, X4Clock& clock)
-    : _storage(storage), _clock(clock)
+JournalManager::JournalManager(X4Storage& storage, X4Clock& clock,
+                                VaultManager* vault)
+    : _storage(storage), _clock(clock), _vault(vault)
 {}
 
 String JournalManager::createEntry(const String& title) {
@@ -35,13 +36,61 @@ String JournalManager::createEntry(const String& title) {
 
 bool JournalManager::saveEntry(const String& path, const JournalEntry& entry) {
     String content = JournalFrontmatter::serialize(entry);
+
+    // Check whether the existing on-disk file is encrypted
+    bool existingIsEncrypted = false;
+    if (_vault) {
+        String existing = _storage.readEntry(path.c_str());
+        existingIsEncrypted = !existing.isEmpty() &&
+                              VaultManager::isEncryptedContent(existing);
+    }
+
+    // Encrypt if: (a) vault is unlocked AND entry is new, OR
+    //             (b) the existing file was already encrypted
+    if (_vault && _vault->isUnlocked() && existingIsEncrypted) {
+        content = _vault->encrypt(content);
+        if (content.isEmpty()) return false;
+    } else if (_vault && _vault->isUnlocked() && !existingIsEncrypted) {
+        // New entry created while vault is unlocked → encrypt it
+        // Note: only when there is no existing file (path doesn't exist yet)
+        if (!_storage.ready()) return false;
+        content = _vault->encrypt(content);
+        if (content.isEmpty()) return false;
+    } else if (_vault && !_vault->isUnlocked() && existingIsEncrypted) {
+        // Cannot update encrypted file without key
+        return false;
+    }
+    // else: vault nullptr or entry is plaintext → save as-is
+
     return _storage.writeEntry(path.c_str(), content);
 }
 
 bool JournalManager::loadEntry(const String& path, JournalEntry& out) {
     String content = _storage.readEntry(path.c_str());
     if (content.isEmpty()) return false;
+
+    if (_vault && VaultManager::isEncryptedContent(content)) {
+        if (_vault->isUnlocked()) {
+            String decrypted = _vault->decrypt(content);
+            if (decrypted.isEmpty()) {
+                // Wrong key or corrupt data
+                out.title  = "DECRYPT FAILED";
+                out.body   = "[Authentication failed — wrong PIN?]";
+                out.locked = false;
+                return true;
+            }
+            JournalFrontmatter::parse(decrypted, out);
+            out.locked = false;
+        } else {
+            out.title  = "[LOCKED]";
+            out.body   = "[This entry is encrypted. Unlock the vault to read.]";
+            out.locked = true;
+        }
+        return true;
+    }
+
     JournalFrontmatter::parse(content, out);
+    out.locked = false;
     return true;
 }
 
@@ -82,6 +131,17 @@ String JournalManager::getEntryTitle(const String& path) {
     if (n == 0) return labelFromFilename(path);
 
     String partial(buf, n);
+
+    // Encrypted entries: show "[LOCKED]" as the title
+    if (_vault && VaultManager::isEncryptedContent(partial)) {
+        if (_vault->isUnlocked()) {
+            // Need to decrypt full content to get title; use loadEntry path
+            JournalEntry e;
+            if (loadEntry(path, e)) return e.title;
+        }
+        return "[LOCKED]";
+    }
+
     if (!partial.startsWith("---\n")) return labelFromFilename(path);
 
     int titlePos = partial.indexOf("title: ");

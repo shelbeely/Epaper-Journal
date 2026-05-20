@@ -4,6 +4,7 @@
 //
 // Always-available display endpoints:  /api/display/*
 // Always-available journal endpoints:  /api/journal/*
+// Always-available vault endpoints:    /api/vault/*
 // Dev-only endpoints:                  /api/dev/*  (CONFIG_X4_DIAG_HTTP_API)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@
 #include "../diagnostics/X4Diagnostics.h"
 #include "../display/X4Display.h"
 #include "../ota/OtaManager.h"
+#include "../vault/VaultManager.h"
 
 // Forward declaration — include JournalManager.h only in WebApi.cpp
 class JournalManager;
@@ -37,7 +39,7 @@ class WebApi {
 public:
     // Pass references to shared objects; WebApi does not own them.
     WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota,
-           JournalManager& jm);
+           JournalManager& jm, VaultManager& vault);
 
     // Start the HTTP server (call after Wi-Fi is up).
     void begin();
@@ -51,10 +53,12 @@ private:
     X4Display&     _display;
     OtaManager&    _ota;
     JournalManager& _jm;
+    VaultManager&  _vault;
     LogRingBuffer  _logs;
 
     void _registerDisplayRoutes();
     void _registerJournalRoutes();
+    void _registerVaultRoutes();
 
 #if CONFIG_X4_DIAG_HTTP_API
     void _registerDevRoutes();

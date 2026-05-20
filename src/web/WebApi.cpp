@@ -26,13 +26,14 @@ String LogRingBuffer::toJson() const {
 // ── WebApi ────────────────────────────────────────────────────────────────────
 
 WebApi::WebApi(X4Diagnostics& diag, X4Display& display, OtaManager& ota,
-               JournalManager& jm)
-    : _diag(diag), _display(display), _ota(ota), _jm(jm)
+               JournalManager& jm, VaultManager& vault)
+    : _diag(diag), _display(display), _ota(ota), _jm(jm), _vault(vault)
 {}
 
 void WebApi::begin() {
     _registerDisplayRoutes();
     _registerJournalRoutes();
+    _registerVaultRoutes();
 #if CONFIG_X4_DIAG_HTTP_API
     _registerDevRoutes();
 #endif
@@ -259,6 +260,56 @@ void WebApi::_registerJournalRoutes() {
             req->send(201, "application/json", out);
         }
     );
+}
+
+// ── Vault routes ──────────────────────────────────────────────────────────────
+//   GET  /api/vault/status  — {"locked": bool}
+//   POST /api/vault/unlock  — body {"pin":"1234"} → {"ok": bool}
+//   POST /api/vault/lock    — {} → {"ok": true}
+
+void WebApi::_registerVaultRoutes() {
+    // GET /api/vault/status
+    _server.on("/api/vault/status", HTTP_GET,
+               [this](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        doc["locked"] = !_vault.isUnlocked();
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // POST /api/vault/lock
+    _server.on("/api/vault/lock", HTTP_POST,
+               [this](AsyncWebServerRequest* req) {
+        _vault.lock();
+        req->send(200, "application/json", "{\"ok\":true}");
+    });
+
+    // POST /api/vault/unlock — body: {"pin":"1234"}
+    _server.on("/api/vault/unlock", HTTP_POST,
+               [](AsyncWebServerRequest* req) { /* body handled below */ },
+               nullptr,
+               [this](AsyncWebServerRequest* req,
+                      uint8_t* data, size_t len, size_t, size_t) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+            req->send(400, "application/json",
+                      "{\"ok\":false,\"error\":\"invalid JSON\"}");
+            return;
+        }
+        const char* pin = doc["pin"] | "";
+        if (pin[0] == '\0') {
+            req->send(400, "application/json",
+                      "{\"ok\":false,\"error\":\"missing pin\"}");
+            return;
+        }
+        if (_vault.deriveKeyFromPin(pin)) {
+            req->send(200, "application/json", "{\"ok\":true}");
+        } else {
+            req->send(500, "application/json",
+                      "{\"ok\":false,\"error\":\"key derivation failed\"}");
+        }
+    });
 }
 
 // ── /api/dev/* — development only ────────────────────────────────────────────

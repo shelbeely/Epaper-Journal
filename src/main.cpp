@@ -22,6 +22,8 @@
 #include "ui/EntryScreen.h"
 #include "ui/SleepScreen.h"
 #include "ui/CalendarScreen.h"
+#include "ui/PinScreen.h"
+#include "vault/VaultManager.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global objects (construction order matches dependency order)
@@ -34,12 +36,15 @@ static BatteryMonitor gBattery(BATTERY_ADC_PIN, BATTERY_DIVIDER);
 static OtaManager     gOta;
 static X4Diagnostics  gDiag;
 static X4Clock        gClock;
-static JournalManager gJournalMgr(gStorage, gClock);
-static WebApi         gWebApi(gDiag, gDisplay, gOta, gJournalMgr);
+static VaultManager   gVault;
+static JournalManager gJournalMgr(gStorage, gClock, &gVault);
+static WebApi         gWebApi(gDiag, gDisplay, gOta, gJournalMgr, gVault);
 static SleepScreen    gSleepScreen(gDisplay, gClock);
-static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock, gSleepScreen);
+static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock,
+                               gSleepScreen, &gVault);
 static EntryScreen    gEntryScreen(gDisplay, gInput, gSleepScreen);
 static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
+static PinScreen      gPinScreen(gDisplay, gInput);
 
 static bool gSafeModeActive = false;
 
@@ -198,6 +203,12 @@ void loop() {
         }
     } else if (result == BrowseResult::CALENDAR) {
         gCalendar.run();
+    } else if (result == BrowseResult::VAULT_TOGGLE) {
+        if (gVault.isUnlocked()) {
+            gVault.lock();
+        } else {
+            gPinScreen.run(gVault);
+        }
     } else if (result == BrowseResult::OPEN_ENTRY && !selectedPath.isEmpty()) {
         JournalEntry e;
         if (gJournalMgr.loadEntry(selectedPath, e)) {
