@@ -3,11 +3,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "BrowseScreen.h"
-#include <esp_sleep.h>
+#include "../journal/PromptPack.h"
+#include "../vault/VaultManager.h"
 
 BrowseScreen::BrowseScreen(JournalManager& jm, X4Display& display,
-                            X4Input& input, X4Clock& clock)
-    : _jm(jm), _display(display), _input(input), _clock(clock)
+                            X4Input& input, X4Clock& clock,
+                            SleepScreen& sleepScreen, VaultManager* vault)
+    : _jm(jm), _display(display), _input(input), _clock(clock),
+      _sleepScreen(sleepScreen), _vault(vault)
 {}
 
 BrowseResult BrowseScreen::run(String& outPath) {
@@ -18,49 +21,72 @@ BrowseResult BrowseScreen::run(String& outPath) {
     _clock.currentYearMonth(year, month);
     std::vector<String> paths = _jm.listEntries(year, month);
 
-    // Build display labels: item 0 is always "[ + NEW ENTRY ]"
+    // Build display labels:
+    //   item 0 → "[ + NEW ENTRY ]"  (BrowseResult::NEW_ENTRY)
+    //   item 1 → "[ STREAK ]"       (BrowseResult::CALENDAR)
+    //   item 2+ → entry titles      (BrowseResult::OPEN_ENTRY)
     std::vector<String> labels;
-    labels.reserve(paths.size() + 1);
+    labels.reserve(paths.size() + FIXED_ITEMS);
     labels.push_back("[ + NEW ENTRY ]");
+    labels.push_back("[ STREAK ]");
+    // Vault toggle item (label depends on lock state)
+    if (_vault) {
+        labels.push_back(_vault->isUnlocked() ? "[ LOCK VAULT ]" : "[ UNLOCK VAULT ]");
+    } else {
+        labels.push_back("[ VAULT (N/A) ]");
+    }
     for (auto& p : paths) {
         labels.push_back(_jm.getEntryTitle(p));
     }
 
-    const int totalItems = (int)labels.size();
-    const int dispH      = _display.height();
+    const int totalItems  = (int)labels.size();
+    const int dispH       = _display.height();
     const int linesPerPage = (dispH - HEADER_H) / ITEM_H;
 
     int selected = 0;
     int topRow   = 0;
     bool needRedraw = true;
     bool fullRefreshPending = true;
+    uint32_t lastActivity = millis();
 
     while (true) {
         _input.tick();
 
-        // Power-button deep sleep
+        // ── Idle timeout → sleep screen ───────────────────────────────────────
+        if (millis() - lastActivity > IDLE_SLEEP_TIMEOUT_MS) {
+            _sleepScreen.sleep(0); // does not return
+        }
+
+        // ── Power-button deep sleep ───────────────────────────────────────────
         if (_input.isPowerButtonPressed()) {
-            _display.sleep();
-            esp_deep_sleep_start();
+            _sleepScreen.sleep(0); // does not return
         }
 
         if (_input.wasUp()) {
             if (selected > 0) { selected--; needRedraw = true; }
             if (selected < topRow) topRow = selected;
+            lastActivity = millis();
         }
         if (_input.wasDown()) {
             if (selected < totalItems - 1) { selected++; needRedraw = true; }
             if (selected >= topRow + linesPerPage) topRow = selected - linesPerPage + 1;
+            lastActivity = millis();
         }
         if (_input.wasConfirm()) {
+            lastActivity = millis();
             if (selected == 0) {
                 return BrowseResult::NEW_ENTRY;
+            } else if (selected == 1) {
+                return BrowseResult::CALENDAR;
+            } else if (selected == 2) {
+                return BrowseResult::VAULT_TOGGLE;
             } else {
-                outPath = paths[selected - 1]; // offset by 1 for the NEW item
+                outPath = paths[selected - FIXED_ITEMS];
                 return BrowseResult::OPEN_ENTRY;
             }
         }
         if (_input.wasBack()) {
+            lastActivity = millis();
             return BrowseResult::BACK;
         }
 
@@ -88,7 +114,7 @@ void BrowseScreen::_render(const std::vector<String>& labels,
     // Clear to white
     memset(fb, 0xFF, (dispW / 8) * dispH);
 
-    // ── Header ───────────────────────────────────────────────────────────────
+    // ── Header ────────────────────────────────────────────────────────────────
     _display.drawText(fb, 4, 4, "JOURNAL", false, SCALE);
 
     // Current month label on the right side
@@ -98,6 +124,11 @@ void BrowseScreen::_render(const std::vector<String>& labels,
     snprintf(monthBuf, sizeof(monthBuf), "%04u-%02u", year, month);
     uint16_t monthLabelW = (uint16_t)(strlen(monthBuf) * FONT5X7_ADVANCE * SCALE);
     _display.drawText(fb, dispW - monthLabelW - 4, 4, monthBuf, false, SCALE);
+
+    // Today's writing prompt (scale 1, below the title row)
+    struct tm now = _clock.now();
+    const char* prompt = PromptPack::today(now);
+    _display.drawText(fb, 4, 26, prompt, false, 1);
 
     // Separator line
     const uint16_t sepY = HEADER_H - 2;

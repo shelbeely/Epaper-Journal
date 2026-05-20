@@ -45,6 +45,13 @@
 #define NVS_NAMESPACE         "x4sys"
 #define NVS_KEY_BOOT_COUNT    "bootcnt"
 
+// ── Phase 3 — Journal UX ─────────────────────────────────────────────────────
+// Idle timeout before the sleep screen is shown (milliseconds).
+// Default: 5 minutes. Override via build flags if needed.
+#ifndef IDLE_SLEEP_TIMEOUT_MS
+  #define IDLE_SLEEP_TIMEOUT_MS 300000UL  // 5 minutes
+#endif
+
 // ── Firmware identity (overridden by build flags) ────────────────────────────
 #ifndef FIRMWARE_VERSION
   #define FIRMWARE_VERSION "0.0.0"

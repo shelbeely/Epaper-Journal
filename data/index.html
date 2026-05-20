@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#4a4a4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
+<title>Pocket Shrine</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:sans-serif;background:#f5f0e8;color:#222;height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#4a4a4a;color:#fff;flex-shrink:0}
+header h1{font-size:1.1rem;letter-spacing:.05em}
+.nav-month{display:flex;align-items:center;gap:8px}
+.nav-btn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:1rem}
+.nav-btn:hover{background:rgba(255,255,255,.15)}
+#monthLabel{font-size:.9rem;min-width:80px;text-align:center}
+#msg{padding:6px 16px;font-size:.85rem;color:#555;background:#e8f4e8;display:none;flex-shrink:0}
+#msg.err{background:#f4e8e8;color:#a00}
+main{flex:1;overflow:hidden;display:flex}
+#list-panel{width:100%;display:flex;flex-direction:column;overflow:hidden}
+#entry-list{flex:1;overflow-y:auto;padding:4px 0}
+.entry-item{padding:12px 16px;cursor:pointer;border-bottom:1px solid #e0d9ce}
+.entry-item:hover{background:#ede8de}
+.entry-title{font-weight:500}
+.entry-date{font-size:.8rem;color:#777;margin-top:2px}
+#new-btn{margin:12px 16px;padding:10px;background:#5a8a5a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.95rem;flex-shrink:0}
+#new-btn:hover{background:#4a7a4a}
+#editor-panel{width:100%;display:none;flex-direction:column;overflow:hidden}
+#editor-panel.visible{display:flex}
+.ed-header{padding:8px 16px;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+#back-btn{background:none;border:none;color:#5a5a5a;cursor:pointer;font-size:1.2rem;padding:0 4px;line-height:1}
+#title-input{flex:1;border:1px solid #ccc;border-radius:4px;padding:6px 8px;font-size:1rem;min-width:0}
+.toolbar{display:flex;gap:4px;padding:6px 16px;background:#eee;border-bottom:1px solid #ddd;flex-shrink:0}
+.tb-btn{padding:4px 10px;border:1px solid #ccc;background:#fff;border-radius:3px;cursor:pointer;font-size:.85rem}
+.tb-btn:hover{background:#e0e0e0}
+#body-area{flex:1;padding:12px 16px;border:none;resize:none;font-family:monospace;font-size:.9rem;background:#fdfaf4;outline:none;overflow-y:auto}
+.ed-footer{display:flex;gap:8px;padding:10px 16px;border-top:1px solid #ddd;background:#f9f6f0;flex-shrink:0}
+#save-btn{flex:1;padding:10px;background:#4a6fa5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.95rem}
+#save-btn:hover{background:#3a5f95}
+#delete-btn{padding:10px 16px;background:#a54a4a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.95rem}
+#delete-btn:hover{background:#952a2a}
+#delete-btn:disabled{opacity:.4;cursor:default}
+/* Export/Backup panel */
+#export-btn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:.85rem;margin-left:8px}
+#export-btn:hover{background:rgba(255,255,255,.15)}
+#export-panel{width:100%;display:none;flex-direction:column;overflow-y:auto;padding:16px}
+#export-panel.visible{display:flex}
+.export-section{margin-bottom:20px;background:#fff;border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.export-section h2{font-size:1rem;margin-bottom:10px;color:#333}
+.export-section p{font-size:.85rem;color:#555;margin-bottom:10px}
+.exp-btn{padding:9px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.9rem;color:#fff}
+.exp-btn.green{background:#5a8a5a}.exp-btn.green:hover{background:#4a7a4a}
+.exp-btn.blue{background:#4a6fa5}.exp-btn.blue:hover{background:#3a5f95}
+.exp-btn.back{background:#777;margin-bottom:12px}.exp-btn.back:hover{background:#555}
+.exp-row{display:flex;gap:8px;flex-wrap:wrap}
+.exp-field{flex:1;min-width:0;border:1px solid #ccc;border-radius:4px;padding:7px 10px;font-size:.9rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128211; Pocket Shrine</h1>
+  <div style="display:flex;align-items:center;gap:0">
+    <div class="nav-month">
+      <button class="nav-btn" id="prev-btn">&#8249;</button>
+      <span id="monthLabel">&#8230;</span>
+      <button class="nav-btn" id="next-btn">&#8250;</button>
+    </div>
+    <button id="export-btn" title="Export &amp; Backup">&#128190;</button>
+  </div>
+</header>
+<div id="msg"></div>
+<main>
+  <div id="list-panel">
+    <div id="entry-list"></div>
+    <button id="new-btn">&#65291; New Entry</button>
+  </div>
+  <div id="editor-panel">
+    <div class="ed-header">
+      <button id="back-btn" title="Back to list">&#8592;</button>
+      <input id="title-input" type="text" placeholder="Entry title&#8230;">
+    </div>
+    <div class="toolbar">
+      <button class="tb-btn" title="Bold" onclick="wrap('**','**')"><b>B</b></button>
+      <button class="tb-btn" title="Italic" onclick="wrap('*','*')"><i>I</i></button>
+      <button class="tb-btn" title="Heading" onclick="insertHeading()">H2</button>
+    </div>
+    <textarea id="body-area" placeholder="Write your entry&#8230;"></textarea>
+    <div class="ed-footer">
+      <button id="save-btn">Save</button>
+      <button id="delete-btn">Delete</button>
+    </div>
+  </div>
+  <!-- Export & Backup panel -->
+  <div id="export-panel">
+    <button class="exp-btn back" id="export-back-btn">&#8592; Back</button>
+    <div class="export-section">
+      <h2>&#128196; Obsidian Export</h2>
+      <p>Download all journal entries as individual Markdown files inside a .tar archive, ready to copy into your Obsidian vault.</p>
+      <button class="exp-btn green" id="obsidian-btn">Download .tar</button>
+    </div>
+    <div class="export-section">
+      <h2>&#129303; GitHub Gist Backup</h2>
+      <p>Back up all your entries to a private GitHub Gist. Your token is stored only in this browser and is never sent to the device.</p>
+      <div class="exp-row" style="margin-bottom:8px">
+        <input class="exp-field" id="gh-token" type="password" placeholder="GitHub Personal Access Token (gist scope)">
+      </div>
+      <div class="exp-row" style="margin-bottom:10px">
+        <input class="exp-field" id="gh-gist-id" type="text" placeholder="Gist ID (leave blank to create new)">
+      </div>
+      <div class="exp-row">
+        <button class="exp-btn blue" id="gist-btn">Backup to Gist</button>
+        <button class="exp-btn green" id="gist-save-btn">Save token</button>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+var cur=new Date(),curPath=null,isNew=false;
+function pad(n){return String(n).padStart(2,'0');}
+function fmtMonth(d){return d.getFullYear()+'-'+pad(d.getMonth()+1);}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function showMsg(txt,err){
+  var m=document.getElementById('msg');
+  m.textContent=txt;m.className=err?'err':'';m.style.display='block';
+  setTimeout(function(){m.style.display='none';},2500);
+}
+function showList(){
+  if(typeof showPanel==='function'){showPanel('list-panel');curPath=null;isNew=false;loadList();}
+  else{document.getElementById('editor-panel').classList.remove('visible');document.getElementById('list-panel').style.display='flex';curPath=null;isNew=false;loadList();}
+}
+function showEditor(path,entry){
+  if(typeof showPanel==='function'){showPanel('editor-panel');}
+  else{document.getElementById('list-panel').style.display='none';document.getElementById('editor-panel').classList.add('visible');}
+  curPath=path;
+  document.getElementById('title-input').value=entry.title||'';
+  document.getElementById('body-area').value=entry.body||'';
+  document.getElementById('delete-btn').disabled=isNew;
+}
+function parseFrontmatter(text){
+  var fm={title:'',date:'',body:text};
+  if(text.indexOf('---\n')!==0)return fm;
+  var end=text.indexOf('\n---\n',4);
+  if(end<0)return fm;
+  text.substring(4,end).split('\n').forEach(function(l){
+    var c=l.indexOf(': ');
+    if(c>0){var k=l.slice(0,c),v=l.slice(c+2);if(k==='title')fm.title=v;else if(k==='date')fm.date=v;}
+  });
+  fm.body=text.substring(end+5);
+  return fm;
+}
+function loadList(){
+  var y=cur.getFullYear(),m=cur.getMonth()+1;
+  document.getElementById('monthLabel').textContent=fmtMonth(cur);
+  fetch('/api/journal/entries?year='+y+'&month='+m)
+    .then(function(r){return r.ok?r.json():[];})
+    .then(function(list){
+      var el=document.getElementById('entry-list');
+      el.innerHTML='';
+      if(!list.length){
+        el.innerHTML='<p style="padding:16px;color:#888;font-size:.9rem">No entries this month.</p>';
+        return;
+      }
+      list.forEach(function(e){
+        var d=document.createElement('div');
+        d.className='entry-item';
+        d.innerHTML='<div class="entry-title">'+esc(e.title||'Untitled')+'</div>'
+                   +'<div class="entry-date">'+esc(e.date||'')+'</div>';
+        d.onclick=function(){openEntry(e.path);};
+        el.appendChild(d);
+      });
+    })
+    .catch(function(){showMsg('Failed to load entries.',true);});
+}
+function openEntry(path){
+  isNew=false;
+  fetch('/api/journal/entry?path='+encodeURIComponent(path))
+    .then(function(r){return r.ok?r.text():Promise.reject();})
+    .then(function(text){showEditor(path,parseFrontmatter(text));})
+    .catch(function(){showMsg('Failed to load entry.',true);});
+}
+document.getElementById('prev-btn').onclick=function(){cur.setMonth(cur.getMonth()-1);loadList();};
+document.getElementById('next-btn').onclick=function(){cur.setMonth(cur.getMonth()+1);loadList();};
+document.getElementById('back-btn').onclick=showList;
+document.getElementById('new-btn').onclick=function(){
+  isNew=true;
+  fetch('/api/journal/new',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({title:'New Entry'})})
+    .then(function(r){return r.ok?r.json():Promise.reject();})
+    .then(function(j){showEditor(j.path,{title:'New Entry',body:'# New Entry\n\n'});})
+    .catch(function(){isNew=false;showMsg('Could not create entry.',true);});
+};
+document.getElementById('save-btn').onclick=function(){
+  if(!curPath)return;
+  var title=document.getElementById('title-input').value.trim()||'Untitled';
+  var body=document.getElementById('body-area').value;
+  var now=new Date();
+  var dateStr=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+' '
+             +pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+  var content='---\ntitle: '+title+'\ndate: '+dateStr+'\n---\n'+body;
+  fetch('/api/journal/entry',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path:curPath,content:content})})
+    .then(function(r){
+      if(r.ok){showMsg('Saved.');isNew=false;document.getElementById('delete-btn').disabled=false;}
+      else showMsg('Save failed.',true);
+    })
+    .catch(function(){showMsg('Save failed.',true);});
+};
+document.getElementById('delete-btn').onclick=function(){
+  if(!curPath||isNew)return;
+  if(!confirm('Delete this entry?'))return;
+  fetch('/api/journal/entry?path='+encodeURIComponent(curPath),{method:'DELETE'})
+    .then(function(r){
+      if(r.ok){showMsg('Entry deleted.');showList();}
+      else showMsg('Delete failed.',true);
+    })
+    .catch(function(){showMsg('Delete failed.',true);});
+};
+function wrap(before,after){
+  var ta=document.getElementById('body-area');
+  var s=ta.selectionStart,e=ta.selectionEnd,sel=ta.value.slice(s,e);
+  ta.setRangeText(before+sel+after,s,e,'select');ta.focus();
+}
+function insertHeading(){
+  var ta=document.getElementById('body-area');
+  var s=ta.selectionStart;
+  var lineStart=ta.value.lastIndexOf('\n',s-1)+1;
+  ta.setRangeText('## ',lineStart,lineStart,'end');ta.focus();
+}
+// ── Panel helpers ────────────────────────────────────────────────────────────
+function showPanel(id){
+  ['list-panel','editor-panel','export-panel'].forEach(function(pid){
+    var el=document.getElementById(pid);
+    if(pid==='editor-panel'){el.classList.remove('visible');}
+    else{el.style.display='none';}
+  });
+  var target=document.getElementById(id);
+  if(id==='editor-panel'){target.classList.add('visible');}
+  else{target.style.display='flex';}
+}
+// ── Export / Backup ──────────────────────────────────────────────────────────
+document.getElementById('export-btn').onclick=function(){showPanel('export-panel');};
+document.getElementById('export-back-btn').onclick=function(){showPanel('list-panel');loadList();};
+
+// Minimal client-side POSIX tar builder
+function buildTar(files){
+  // files = [{name: String, content: String}]
+  var enc=new TextEncoder();
+  var blocks=[];
+  function hdrBlock(name,size){
+    var h=new Uint8Array(512);
+    function setStr(off,len,str){
+      var b=enc.encode(str.slice(0,len));
+      for(var i=0;i<b.length&&i<len;i++)h[off+i]=b[i];
+    }
+    function setOctal(off,len,val){setStr(off,len,val.toString(8).padStart(len-1,'0'));}
+    setStr(0,100,name);
+    setStr(100,8,'0000644');
+    setStr(108,8,'0000000');
+    setStr(116,8,'0000000');
+    setOctal(124,12,size);
+    setOctal(136,12,Math.floor(Date.now()/1000));
+    h[156]=48; // '0' regular file
+    setStr(257,6,'ustar ');
+    setStr(263,2,' ');
+    // Checksum
+    var sum=256; // 8 space bytes counted as 0x20*8=256
+    for(var i=0;i<512;i++)if(i<148||i>=156)sum+=h[i];
+    setStr(148,8,sum.toString(8).padStart(6,'0')+'\0 ');
+    return h;
+  }
+  function padBlock(data){
+    var padded=new Uint8Array(Math.ceil(data.length/512)*512);
+    padded.set(data);return padded;
+  }
+  files.forEach(function(f){
+    var data=enc.encode(f.content);
+    blocks.push(hdrBlock(f.name,data.length));
+    if(data.length>0)blocks.push(padBlock(data));
+  });
+  blocks.push(new Uint8Array(1024)); // two zero blocks = end of archive
+  var total=blocks.reduce(function(s,b){return s+b.length;},0);
+  var out=new Uint8Array(total);var off=0;
+  blocks.forEach(function(b){out.set(b,off);off+=b.length;});
+  return out;
+}
+
+document.getElementById('obsidian-btn').onclick=function(){
+  showMsg('Fetching entries…',false);
+  fetch('/api/export/all')
+    .then(function(r){return r.ok?r.json():Promise.reject('HTTP '+r.status);})
+    .then(function(entries){
+      var files=entries.filter(function(e){return !e.locked;}).map(function(e){
+        var frontmatter='---\ntitle: '+e.title+'\ndate: '+e.date+(e.tags?'\ntags: '+e.tags:'')+'\n---\n';
+        return {name:e.filename||('entry.md'),content:frontmatter+(e.body||'')};
+      });
+      if(!files.length){showMsg('No unlocked entries to export.',true);return;}
+      var tar=buildTar(files);
+      var blob=new Blob([tar],{type:'application/x-tar'});
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='journal-obsidian.tar';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showMsg('Downloaded '+files.length+' entries.',false);
+    })
+    .catch(function(e){showMsg('Export failed: '+e,true);});
+};
+
+// Save / load token from localStorage
+(function(){
+  var t=localStorage.getItem('gh_token');
+  var g=localStorage.getItem('gh_gist_id');
+  if(t)document.getElementById('gh-token').value=t;
+  if(g)document.getElementById('gh-gist-id').value=g;
+})();
+document.getElementById('gist-save-btn').onclick=function(){
+  localStorage.setItem('gh_token',document.getElementById('gh-token').value.trim());
+  localStorage.setItem('gh_gist_id',document.getElementById('gh-gist-id').value.trim());
+  showMsg('Token saved in browser.',false);
+};
+
+document.getElementById('gist-btn').onclick=function(){
+  var token=document.getElementById('gh-token').value.trim();
+  var gistId=document.getElementById('gh-gist-id').value.trim();
+  if(!token){showMsg('Enter a GitHub token first.',true);return;}
+  showMsg('Fetching entries…',false);
+  fetch('/api/export/all')
+    .then(function(r){return r.ok?r.json():Promise.reject('HTTP '+r.status);})
+    .then(function(entries){
+      var gistFiles={};
+      entries.forEach(function(e){
+        if(e.locked)return;
+        var fm='---\ntitle: '+e.title+'\ndate: '+e.date+(e.tags?'\ntags: '+e.tags:'')+'\n---\n';
+        gistFiles[e.filename||'entry.md']={content:fm+(e.body||'')};
+      });
+      if(!Object.keys(gistFiles).length){showMsg('No unlocked entries to backup.',true);return;}
+      var url=gistId?'https://api.github.com/gists/'+gistId:'https://api.github.com/gists';
+      var method=gistId?'PATCH':'POST';
+      var body={description:'Pocket Shrine Journal Backup',public:false,files:gistFiles};
+      showMsg('Uploading to GitHub…',false);
+      return fetch(url,{method:method,headers:{'Authorization':'token '+token,'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(function(r){return r.ok?r.json():r.json().then(function(j){return Promise.reject(j.message||'GitHub error');});})
+        .then(function(j){
+          var id=j.id||gistId;
+          document.getElementById('gh-gist-id').value=id;
+          localStorage.setItem('gh_gist_id',id);
+          showMsg('Backed up '+(Object.keys(gistFiles).length)+' entries → gist.github.com/'+id,false);
+        });
+    })
+    .catch(function(e){showMsg('Backup failed: '+e,true);});
+};
+// ── Service Worker ────────────────────────────────────────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw.js')
+      .catch(function(e){console.warn('SW registration failed:',e);});
+  });
+}
+loadList();
+</script>
+</body>
+</html>

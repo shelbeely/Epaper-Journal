@@ -139,6 +139,132 @@ After flashing a dev build and connecting to Wi-Fi:
 | `/api/display/refresh/partial` | POST | Trigger partial refresh `{"x":0,"y":0,"w":100,"h":100}` |
 | `/api/display/clear` | POST | Clear display |
 
+### Always-available journal API (Phase 2)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | GET | Pocket Shrine SPA — in-browser Markdown journal editor |
+| `/api/journal/entries` | GET | List entries for `?year=YYYY&month=MM` |
+| `/api/journal/entry` | GET | Read raw Markdown entry at `?path=<path>` |
+| `/api/journal/entry` | POST | Save entry — body: `{"path":"...","content":"..."}` |
+| `/api/journal/entry` | DELETE | Delete entry at `?path=<path>` |
+| `/api/journal/new` | POST | Create entry, return `{"path":"..."}` — body (optional): `{"title":"..."}` |
+
+#### `POST /api/journal/new`
+
+Creates a new journal entry on the SD card using the current timestamp as the
+filename, then returns the full path so the browser can immediately open the editor.
+
+```bash
+# Create a new entry (no body required — defaults to "New Entry")
+curl -X POST http://192.168.4.1/api/journal/new \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My First Entry"}'
+# → 201  {"path":"/journal/2026/05/20260520-103000.md"}
+```
+
+## Phase 3 — Journal UX features
+
+### Writing prompt packs
+
+Each day the browse screen header shows a different writing prompt, drawn from
+`src/journal/PromptPack.h` — a header-only library of 30 embedded prompts.
+The prompt rotates deterministically by day-of-year so it is consistent across
+reboots and requires no RNG or storage.
+
+```cpp
+struct tm now = gClock.now();
+const char* prompt = PromptPack::today(now);   // day-of-year rotation
+const char* prompt = PromptPack::getPrompt(42); // by seed (wraps)
+```
+
+### Streak calendar (`[ STREAK ]`)
+
+Select **[ STREAK ]** from the browse list to open the monthly calendar view.
+Each day that has at least one journal entry is shown as a filled black square;
+today's date is outlined. Navigate months with **Up** (prev) / **Down** (next)
+and exit with **Back** or **Confirm**.
+
+### Sleep screen
+
+Pressing the **power button** or leaving the device idle for
+`IDLE_SLEEP_TIMEOUT_MS` (default 5 minutes, configurable in `src/config.h`)
+shows a brief "sleep screen" with the current date, time, and a "ZZZ" marker
+before the device enters deep sleep. Set a custom timeout:
+
+```ini
+; platformio.ini build_flags
+-DIDLE_SLEEP_TIMEOUT_MS=180000   ; 3 minutes
+```
+
+## Phase 4 — Privacy Mode / Encrypted Vault
+
+Phase 4 adds AES-256-GCM encryption for journal entries via the ESP32's mbedTLS library.
+
+### VaultManager (`src/vault/VaultManager.h`)
+
+Key derivation uses **PBKDF2-HMAC-SHA256** (10 000 iterations) against a 16-byte random salt persisted in NVS under the `vault` namespace.
+
+Encrypted file format stored on the SD card:
+```
+---vault-v1---
+<base64(nonce[12] | tag[16] | ciphertext[N])>
+```
+
+The plaintext that is encrypted is the full YAML-frontmatter Markdown file.
+`JournalManager` transparently encrypts on create/save and decrypts on load when the vault is unlocked.
+
+### PIN entry (`src/ui/PinScreen.h`)
+
+Select **[ UNLOCK VAULT ]** from the browse list to open the 4-digit PIN entry UI.
+
+| Button | Action |
+|---|---|
+| Up / Down | Increment / decrement current digit (0–9, wraps) |
+| Left / Right | Move cursor to previous / next digit |
+| Confirm | Submit PIN → derive key → unlock vault |
+| Back | Cancel |
+
+Select **[ LOCK VAULT ]** to immediately zero the in-memory key.
+
+### Vault HTTP API
+
+Three endpoints are always available when the device is on Wi-Fi:
+
+| Method | Path | Body | Description |
+|---|---|---|---|
+| `GET` | `/api/vault/status` | — | `{"locked": true/false}` |
+| `POST` | `/api/vault/unlock` | `{"pin":"1234"}` | Derive key and unlock; returns `{"ok": true}` |
+| `POST` | `/api/vault/lock` | — | Zero the in-memory key; returns `{"ok": true}` |
+
+```bash
+# Check vault state
+curl http://192.168.4.1/api/vault/status
+
+# Unlock (PIN "1234")
+curl -X POST http://192.168.4.1/api/vault/unlock \
+     -H 'Content-Type: application/json' \
+     -d '{"pin":"1234"}'
+
+# Lock
+curl -X POST http://192.168.4.1/api/vault/lock
+```
+
+> **Security note:** The PIN travels over plain HTTP on the soft-AP network. Do not use the same PIN for anything else while the soft-AP is reachable to untrusted devices.
+
+### Locked entries in browse list
+
+When the vault is locked, encrypted entries show `[LOCKED]` as their title in the browse list and cannot be opened or edited. They are safe to browse without revealing any content.
+
+ (`data/index.html`) is gzip-compressed and embedded in
+flash as a C byte array in `src/web/ui_bundle.h`.  The header is auto-generated
+before each `dev` / `release` build via the PlatformIO `extra_scripts` hook:
+
+```bash
+# Regenerate manually after editing data/index.html:
+python3 tools/embed_ui.py
+```
+
 ## community-sdk
 
 The firmware depends on the [OpenX4 E-Paper Community SDK](https://github.com/open-x4-epaper/community-sdk)

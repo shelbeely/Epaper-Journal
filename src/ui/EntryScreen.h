@@ -4,6 +4,7 @@
 //
 // Displays a JournalEntry with title and word-wrapped body.
 // Up/Down pages through long entries; Back returns to the caller.
+// Power button triggers the sleep screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <Arduino.h>
@@ -11,17 +12,19 @@
 #include "../journal/JournalEntry.h"
 #include "../display/X4Display.h"
 #include "../input/X4Input.h"
+#include "SleepScreen.h"
 
 class EntryScreen {
 public:
-    EntryScreen(X4Display& display, X4Input& input);
+    EntryScreen(X4Display& display, X4Input& input, SleepScreen& sleepScreen);
 
     // Display `entry` and block until the user presses Back.
     void show(const JournalEntry& entry);
 
 private:
-    X4Display& _display;
-    X4Input&   _input;
+    X4Display&   _display;
+    X4Input&     _input;
+    SleepScreen& _sleepScreen;
 
     static constexpr uint8_t SCALE    = 2;
     static constexpr uint8_t TITLE_H  = FONT5X7_LINE_H * SCALE * 2; // title row height

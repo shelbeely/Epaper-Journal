@@ -3,10 +3,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "EntryScreen.h"
-#include <esp_sleep.h>
 
-EntryScreen::EntryScreen(X4Display& display, X4Input& input)
-    : _display(display), _input(input)
+EntryScreen::EntryScreen(X4Display& display, X4Input& input,
+                         SleepScreen& sleepScreen)
+    : _display(display), _input(input), _sleepScreen(sleepScreen)
 {}
 
 void EntryScreen::show(const JournalEntry& entry) {
@@ -26,10 +26,9 @@ void EntryScreen::show(const JournalEntry& entry) {
     while (true) {
         _input.tick();
 
-        // Power-button deep sleep
+        // Power-button sleep screen
         if (_input.isPowerButtonPressed()) {
-            _display.sleep();
-            esp_deep_sleep_start();
+            _sleepScreen.sleep(0); // does not return
         }
 
         if (_input.wasUp() || _input.wasLeft()) {
