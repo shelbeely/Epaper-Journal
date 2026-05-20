@@ -34,6 +34,7 @@ void WebApi::begin() {
     _registerDisplayRoutes();
     _registerJournalRoutes();
     _registerVaultRoutes();
+    _registerExportRoutes();
 #if CONFIG_X4_DIAG_HTTP_API
     _registerDevRoutes();
 #endif
@@ -419,3 +420,111 @@ void WebApi::_registerDevRoutes() {
     });
 }
 #endif // CONFIG_X4_DIAG_HTTP_API
+
+// ── Export & PWA routes ───────────────────────────────────────────────────────
+//
+// GET /manifest.json       — PWA Web App Manifest
+// GET /sw.js               — minimal service worker (offline cache)
+// GET /api/export/all      — JSON array of every entry across all months
+//
+// These routes are always available regardless of build configuration.
+
+static const char PWA_MANIFEST[] PROGMEM = R"json(
+{
+  "name": "Pocket Shrine",
+  "short_name": "Journal",
+  "description": "E-Paper Journal companion",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e8",
+  "theme_color": "#4a4a4a",
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
+)json";
+
+static const char SERVICE_WORKER[] PROGMEM = R"js(
+const CACHE = 'pocket-shrine-v1';
+const PRECACHE = ['/'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', e => {
+  const url = e.request.url;
+  // Cache-first for the SPA shell; network-first for API calls
+  if (url.includes('/api/') || url.includes('/api/export')) {
+    e.respondWith(fetch(e.request).catch(() =>
+      new Response('{"error":"offline"}', {headers: {'Content-Type':'application/json'}})
+    ));
+  } else {
+    e.respondWith(
+      caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
+        return caches.open(CACHE).then(c => { c.put(e.request, resp.clone()); return resp; });
+      }))
+    );
+  }
+});
+)js";
+
+void WebApi::_registerExportRoutes() {
+    // GET /manifest.json — PWA Web App Manifest
+    _server.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest* req) {
+        req->send(200, "application/manifest+json",
+                  String(FPSTR(PWA_MANIFEST)));
+    });
+
+    // GET /sw.js — service worker
+    _server.on("/sw.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        auto* resp = req->beginResponse(200, "application/javascript",
+                                         String(FPSTR(SERVICE_WORKER)));
+        resp->addHeader("Service-Worker-Allowed", "/");
+        req->send(resp);
+    });
+
+    // GET /api/export/all — JSON array of all entries (title, date, tags, body)
+    // If an entry is locked (vault not unlocked), body is omitted.
+    _server.on("/api/export/all", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+
+        auto paths = _jm.listAllPaths();
+        for (auto& path : paths) {
+            JournalEntry e;
+            bool ok = _jm.loadEntry(path, e);
+            if (!ok) continue;
+
+            JsonObject obj = arr.add<JsonObject>();
+            // Build Obsidian-friendly filename from path: use the last segment
+            int slash = path.lastIndexOf('/');
+            String fn = (slash >= 0) ? path.substring(slash + 1) : path;
+            obj["path"]     = path;
+            obj["filename"] = fn;
+            obj["title"]    = e.title;
+            obj["date"]     = e.date;
+            if (!e.tagsRaw.isEmpty()) obj["tags"] = e.tagsRaw;
+            if (!e.locked) {
+                obj["body"] = e.body;
+            } else {
+                obj["locked"] = true;
+            }
+        }
+
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+}

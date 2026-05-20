@@ -120,6 +120,23 @@ std::vector<String> JournalManager::listEntries(uint16_t year, uint8_t month) {
     return paths;
 }
 
+std::vector<String> JournalManager::listAllPaths() {
+    std::vector<String> result;
+    if (!_storage.ready()) return result;
+
+    uint16_t curYear; uint8_t dummy;
+    _clock.currentYearMonth(curYear, dummy);
+
+    for (uint16_t y = 2020; y <= curYear + 1; y++) {
+        for (uint8_t m = 1; m <= 12; m++) {
+            auto paths = listEntries(y, m);
+            for (auto& p : paths) result.push_back(p);
+        }
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
 bool JournalManager::deleteEntry(const String& path) {
     return _storage.deleteEntry(path.c_str());
 }

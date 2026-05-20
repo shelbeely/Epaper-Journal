@@ -84,6 +84,31 @@ void test_label_filename_no_extension(void) {
     TEST_ASSERT_EQUAL_STRING("2026-01-01 12:00", result.c_str());
 }
 
+// ── listAllPaths ──────────────────────────────────────────────────────────────
+
+// When storage is not ready, listAllPaths must return an empty vector.
+void test_list_all_paths_empty_when_not_ready(void) {
+    SDCardManager::_stubReady = false;
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+    auto paths = jm.listAllPaths();
+    TEST_ASSERT_EQUAL(0, (int)paths.size());
+    SDCardManager::_stubReady = false; // restore
+}
+
+// When storage is ready but SD returns no files, listAllPaths still returns empty.
+void test_list_all_paths_empty_no_files(void) {
+    SDCardManager::_stubReady = true;
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+    auto paths = jm.listAllPaths();
+    // SDCardManager stub returns empty lists → JournalManager should return {}
+    TEST_ASSERT_EQUAL(0, (int)paths.size());
+    SDCardManager::_stubReady = false;
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -97,6 +122,8 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_label_empty_string);
     RUN_TEST(test_label_trailing_slash);
     RUN_TEST(test_label_filename_no_extension);
+    RUN_TEST(test_list_all_paths_empty_when_not_ready);
+    RUN_TEST(test_list_all_paths_empty_no_files);
 
     return UNITY_END();
 }

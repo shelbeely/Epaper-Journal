@@ -59,6 +59,7 @@ private:
     void _registerDisplayRoutes();
     void _registerJournalRoutes();
     void _registerVaultRoutes();
+    void _registerExportRoutes();   // /api/export/* + /manifest.json + /sw.js
 
 #if CONFIG_X4_DIAG_HTTP_API
     void _registerDevRoutes();
