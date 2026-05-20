@@ -20,6 +20,8 @@
 #include "web/WebApi.h"
 #include "ui/BrowseScreen.h"
 #include "ui/EntryScreen.h"
+#include "ui/SleepScreen.h"
+#include "ui/CalendarScreen.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global objects (construction order matches dependency order)
@@ -34,8 +36,10 @@ static X4Diagnostics  gDiag;
 static X4Clock        gClock;
 static JournalManager gJournalMgr(gStorage, gClock);
 static WebApi         gWebApi(gDiag, gDisplay, gOta, gJournalMgr);
-static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock);
-static EntryScreen    gEntryScreen(gDisplay, gInput);
+static SleepScreen    gSleepScreen(gDisplay, gClock);
+static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock, gSleepScreen);
+static EntryScreen    gEntryScreen(gDisplay, gInput, gSleepScreen);
+static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
 
 static bool gSafeModeActive = false;
 
@@ -192,6 +196,8 @@ void loop() {
                 gEntryScreen.show(e);
             }
         }
+    } else if (result == BrowseResult::CALENDAR) {
+        gCalendar.run();
     } else if (result == BrowseResult::OPEN_ENTRY && !selectedPath.isEmpty()) {
         JournalEntry e;
         if (gJournalMgr.loadEntry(selectedPath, e)) {

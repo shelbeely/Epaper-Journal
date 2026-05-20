@@ -163,7 +163,41 @@ curl -X POST http://192.168.4.1/api/journal/new \
 # → 201  {"path":"/journal/2026/05/20260520-103000.md"}
 ```
 
-## Web UI build step
+## Phase 3 — Journal UX features
+
+### Writing prompt packs
+
+Each day the browse screen header shows a different writing prompt, drawn from
+`src/journal/PromptPack.h` — a header-only library of 30 embedded prompts.
+The prompt rotates deterministically by day-of-year so it is consistent across
+reboots and requires no RNG or storage.
+
+```cpp
+struct tm now = gClock.now();
+const char* prompt = PromptPack::today(now);   // day-of-year rotation
+const char* prompt = PromptPack::getPrompt(42); // by seed (wraps)
+```
+
+### Streak calendar (`[ STREAK ]`)
+
+Select **[ STREAK ]** from the browse list to open the monthly calendar view.
+Each day that has at least one journal entry is shown as a filled black square;
+today's date is outlined. Navigate months with **Up** (prev) / **Down** (next)
+and exit with **Back** or **Confirm**.
+
+### Sleep screen
+
+Pressing the **power button** or leaving the device idle for
+`IDLE_SLEEP_TIMEOUT_MS` (default 5 minutes, configurable in `src/config.h`)
+shows a brief "sleep screen" with the current date, time, and a "ZZZ" marker
+before the device enters deep sleep. Set a custom timeout:
+
+```ini
+; platformio.ini build_flags
+-DIDLE_SLEEP_TIMEOUT_MS=180000   ; 3 minutes
+```
+
+
 
 The Pocket Shrine SPA (`data/index.html`) is gzip-compressed and embedded in
 flash as a C byte array in `src/web/ui_bundle.h`.  The header is auto-generated
