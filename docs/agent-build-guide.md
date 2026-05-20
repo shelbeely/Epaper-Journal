@@ -312,7 +312,7 @@ PLATFORMIO_BUILD_FLAGS="-DWIFI_SSID=\"MyNetwork\" -DWIFI_PASSWORD=\"MyPassword\"
 
 ### Soft AP (Web Editor mode)
 
-`SOFTAP_SSID` defaults to `"Pocket Shrine"` with an open password. Override in the same way if
+`SOFTAP_SSID` defaults to `"eJournal"` with an open password. Override in the same way if
 needed. The captive portal gates access.
 
 ---

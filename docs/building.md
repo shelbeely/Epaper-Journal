@@ -143,7 +143,7 @@ After flashing a dev build and connecting to Wi-Fi:
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/` | GET | Pocket Shrine SPA — in-browser Markdown journal editor |
+| `/` | GET | eJournal SPA — in-browser Markdown journal editor |
 | `/api/journal/entries` | GET | List entries for `?year=YYYY&month=MM` |
 | `/api/journal/entry` | GET | Read raw Markdown entry at `?path=<path>` |
 | `/api/journal/entry` | POST | Save entry — body: `{"path":"...","content":"..."}` |

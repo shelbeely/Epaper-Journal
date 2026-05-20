@@ -33,7 +33,7 @@
 #endif
 
 // Soft-AP SSID for Web Editor mode
-#define SOFTAP_SSID     "Pocket Shrine"
+#define SOFTAP_SSID     "eJournal"
 #define SOFTAP_PASSWORD ""              // open AP — gate access via captive portal
 
 // ── OTA manifest endpoint ─────────────────────────────────────────────────────
