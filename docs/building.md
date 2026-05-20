@@ -65,7 +65,7 @@ pio run -e release
 Or:
 
 ```bash
-RELEASE_VERSION=1.0.0 ./tools/agent_build_release.sh
+RELEASE_VERSION=0.1.0 ./tools/agent_build_release.sh
 ```
 
 ## Flashing

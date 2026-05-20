@@ -11,7 +11,7 @@ pio run -e dev \
         -DCONFIG_X4_AGENT_DIAGNOSTICS=1 \
         -DCONFIG_X4_VERBOSE_DISPLAY_DIAGNOSTICS=1 \
         -DCONFIG_X4_DIAG_HTTP_API=1 \
-        -DFIRMWARE_VERSION=\"0.0.0-dev\" \
+        -DFIRMWARE_VERSION=\"0.1.0-dev\" \
         -DFIRMWARE_CHANNEL=\"dev\" \
         -DFIRMWARE_DEVICE=\"xteink-x4\" \
         -DFIRMWARE_COMMIT=\"${COMMIT}\""

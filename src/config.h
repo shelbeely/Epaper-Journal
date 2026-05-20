@@ -54,7 +54,7 @@
 
 // ── Firmware identity (overridden by build flags) ────────────────────────────
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION "0.0.0"
+  #define FIRMWARE_VERSION "0.1.0"
 #endif
 #ifndef FIRMWARE_CHANNEL
   #define FIRMWARE_CHANNEL "dev"

@@ -1,27 +1,36 @@
-# Epaper Journal — Xteink X4 Firmware
+# Epaper Journal
 
 [![Build Firmware](https://github.com/shelbeely/Epaper-Journal/actions/workflows/build.yml/badge.svg)](https://github.com/shelbeely/Epaper-Journal/actions/workflows/build.yml)
 
-An Arduino/PlatformIO firmware for the **Xteink X4** e-paper device that turns it into a private, offline-first personal journal. Built on the [open-x4-epaper/community-sdk](https://github.com/open-x4-epaper/community-sdk).
+Epaper Journal is PlatformIO/Arduino firmware for the **Xteink X4** that turns the device into a private, offline-first journal with an e-paper reading experience, local storage, a web companion surface, OTA update support, and an optional encrypted vault.
 
----
+## Release status
 
-## Features (by phase)
+- Current release: **v0.1.0**
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Full build and flashing guide: [docs/building.md](docs/building.md)
 
-| Phase | Status | Description |
-|---|---|---|
-| **0 — Hardware Prototype** | ✅ Complete | Display, buttons, SD card, Wi-Fi soft-AP, OTA scaffold |
-| **1 — Plaintext Diary** | 🚧 In progress | YAML-frontmatter Markdown entries, browse UI, export |
-| **2 — Web Editor** | 🚧 In progress | Soft-AP "Pocket Shrine" with in-browser Markdown editor |
-| **3 — Journal UX** | ✅ Complete | Prompt packs, streak calendar, sleep screen |
-| **4 — Privacy Mode** | ✅ Complete | AES-GCM encrypted vault via mbedTLS, PIN entry, vault routes |
-| **5 — Companion Tools** | 🚧 In progress | Android PWA, Obsidian .tar export, GitHub Gist backup |
+## What v0.1.0 includes
 
----
+- On-device journal browsing, reading, and new-entry creation
+- Calendar navigation and built-in daily writing prompts
+- Sleep-screen oriented journal UX for the X4 display
+- Local SD-card backed journal storage
+- Optional PIN-unlocked encrypted vault for private entries
+- HTTP APIs for display, journal, vault, export, and OTA flows
+- OTA health checks, rollback support, and safe-mode recovery behavior
 
-## Hardware
+## Hardware target
 
-**Xteink X4** — ESP32-based e-paper device with SSD1677 display (800×480), ADC-multiplexed buttons, SD card slot, and LiPo battery.
+This project targets the **Xteink X4**, an ESP32-based e-paper device with:
+
+- SSD1677 800×480 display
+- ADC-multiplexed buttons
+- SD card storage
+- Wi-Fi connectivity
+- LiPo battery support
+
+### Pin reference
 
 | Signal | GPIO |
 |---|---|
@@ -35,62 +44,79 @@ An Arduino/PlatformIO firmware for the **Xteink X4** e-paper device that turns i
 | Button ADC 2 | 2 |
 | Power button | 3 |
 
----
-
 ## Quick start
 
 ```bash
-# Clone with submodules
 git clone --recurse-submodules https://github.com/shelbeely/Epaper-Journal.git
 cd Epaper-Journal
 
-# Build dev firmware
+# Development build
 pio run -e dev
 
-# Flash via USB
+# Flash over USB
 pio run -e dev --target upload
 
-# Monitor serial output
+# Monitor serial logs
 pio device monitor --baud 115200
 ```
 
-See **[docs/building.md](docs/building.md)** for the full build, flash, OTA, and API reference.
+## Release build
 
----
+```bash
+pio run -e release
 
-## Project structure
-
-```
-.
-├── src/
-│   ├── main.cpp                  # Phase 0 MVP entry point
-│   ├── config.h                  # Hardware pin constants
-│   ├── diagnostics/              # X4Log, X4Diagnostics
-│   ├── display/                  # X4Display wrapper (EInkDisplay)
-│   ├── input/                    # X4Input wrapper (InputManager)
-│   ├── storage/                  # X4Storage wrapper (SDCardManager)
-│   ├── ota/                      # OtaManager — pull OTA + rollback
-│   └── web/                      # WebApi — HTTP diagnostics + display endpoints
-├── open-x4-sdk/                  # community-sdk (git submodule)
-├── platformio.ini                # PlatformIO config (dev + release envs)
-├── partitions_ota.csv            # Dual OTA slots + FAT data partition
-├── sdkconfig.defaults            # ESP-IDF Kconfig overrides
-├── tools/                        # Agent build/OTA/health scripts
-└── docs/building.md              # Full documentation
+# or inject an explicit release version
+RELEASE_VERSION=0.1.0 ./tools/agent_build_release.sh
 ```
 
----
+## Development and testing
 
-## Safety features
+```bash
+# Native unit tests
+pio test -e native
 
-- **OTA rollback** — new firmware must pass a health-check gate before `esp_ota_mark_app_valid_cancel_rollback()` is called. Failed checks trigger automatic rollback.
-- **Crash-loop detection** — NVS boot counter; ≥ 3 unclean boots activates Safe Mode.
-- **Safe Mode** — power button held at boot skips all experimental features, exposes OTA recovery endpoint only.
-- **No secrets in logs** — Wi-Fi credentials and tokens are never serialized to Serial or HTTP responses.
+# Firmware builds
+pio run -e dev
+pio run -e release
+```
 
----
+The repository uses:
+
+- `src/` for firmware code
+- `test/` for native unit tests
+- `tools/` for helper build and OTA scripts
+- `open-x4-sdk/` for the community SDK submodule
+
+## Major components
+
+- `src/journal/` — entry creation, storage layout, parsing, prompts
+- `src/ui/` — browse, entry, calendar, sleep, and PIN screens
+- `src/vault/` — encrypted vault handling
+- `src/web/` — HTTP routes and bundled web UI
+- `src/ota/` — OTA manifest handling, health checks, rollback flow
+- `src/display/`, `src/input/`, `src/storage/` — hardware abstraction wrappers
+
+## Safety and recovery
+
+- OTA validation before marking a new image healthy
+- Automatic rollback when health checks fail
+- Crash-loop detection with safe-mode boot fallback
+- Soft-AP availability for local access
+- No Wi-Fi credentials or tokens intentionally exposed in logs or HTTP responses
+
+## Project roadmap snapshot
+
+| Phase | Status | Description |
+|---|---|---|
+| 0 — Hardware Prototype | ✅ Complete | Display, buttons, SD card, Wi-Fi soft-AP, OTA scaffold |
+| 1 — Plaintext Diary | 🚧 In progress | YAML-frontmatter Markdown entries, browse UI, export |
+| 2 — Web Editor | 🚧 In progress | Soft-AP web editing workflow |
+| 3 — Journal UX | ✅ Complete | Prompt packs, streak calendar, sleep screen |
+| 4 — Privacy Mode | ✅ Complete | AES-GCM encrypted vault, PIN entry, vault routes |
+| 5 — Companion Tools | 🚧 In progress | PWA/export/backup follow-up work |
 
 ## Contributing
 
-See [CONTRIBUTING](#) and the [PR template](.github/PULL_REQUEST_TEMPLATE.md).
-Bug reports and feature requests: use the [issue templates](.github/ISSUE_TEMPLATE/).
+- Use the [pull request template](.github/PULL_REQUEST_TEMPLATE.md)
+- Use the [issue templates](.github/ISSUE_TEMPLATE/)
+- Update [CHANGELOG.md](CHANGELOG.md) for user-visible release changes

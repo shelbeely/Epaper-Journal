@@ -339,7 +339,7 @@ Two build environments are defined in `platformio.ini`:
 
 | Flag | `dev` default | `release` default | Set by |
 |---|---|---|---|
-| `FIRMWARE_VERSION` | `"0.0.0-dev"` | `"0.0.0"` | Build flag / agent script |
+| `FIRMWARE_VERSION` | `"0.1.0-dev"` | `"0.1.0"` | Build flag / agent script |
 | `FIRMWARE_CHANNEL` | `"dev"` | `"release"` | Build flag |
 | `FIRMWARE_DEVICE` | `"xteink-x4"` | `"xteink-x4"` | Build flag |
 | `FIRMWARE_COMMIT` | `"unknown"` | `"unknown"` | Injected by agent scripts only |
@@ -356,7 +356,7 @@ pio run -e dev
 # Output: .pio/build/dev/firmware.bin
 
 # Release build
-RELEASE_VERSION=1.0.0 ./tools/agent_build_release.sh
+RELEASE_VERSION=0.1.0 ./tools/agent_build_release.sh
 # Output: .pio/build/release/firmware.bin
 ```
 

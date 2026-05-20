@@ -4,7 +4,7 @@
 set -euo pipefail
 
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-VERSION=${RELEASE_VERSION:-"0.0.0"}
+VERSION=${RELEASE_VERSION:-"0.1.0"}
 
 echo "Building release firmware v${VERSION} (commit: $COMMIT)..."
 
