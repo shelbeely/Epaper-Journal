@@ -66,10 +66,11 @@ public:
 
     static const char* resultString(OtaResult r);
 
+    // Compare semantic versions; returns true if `candidate` is newer than `current`.
+    // Public to allow direct unit testing of the version comparison logic.
+    static bool isNewerVersion(const String& candidate, const String& current);
+
 private:
     uint32_t _bootCount = 0;
     bool _pendingVerify = false;
-
-    // Compare semantic versions; returns true if `candidate` is newer than `current`.
-    static bool isNewerVersion(const String& candidate, const String& current);
 };
