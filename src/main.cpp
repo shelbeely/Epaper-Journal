@@ -90,8 +90,8 @@ static bool runHealthChecks() {
         X4_LOGF(X4M_HEALTH_FAILED, "check=battery");
         ok = false;
     }
-    // 4. Wi-Fi connected (STA or AP)
-    if (WiFi.status() != WL_CONNECTED && WiFi.softAPgetStationNum() == 0) {
+    // 4. Wi-Fi connected (STA) or soft-AP interface is active
+    if (WiFi.status() != WL_CONNECTED && !(WiFi.getMode() & WIFI_AP)) {
         X4_LOGF(X4M_HEALTH_FAILED, "check=wifi");
         ok = false;
     }

@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- OTA health check now treats an active soft-AP interface as healthy even when no clients are connected, preventing false rollback requests after flashing.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
