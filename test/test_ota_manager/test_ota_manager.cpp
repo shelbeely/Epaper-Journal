@@ -73,6 +73,61 @@ void test_version_minor_carries_over_patch(void) {
     TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.1.100", "1.2.0"));
 }
 
+// ── isNewerVersion() — pre-release (semver §9 / §11) ─────────────────────────
+
+void test_version_release_newer_than_prerelease(void) {
+    // 1.0.0 > 1.0.0-dev  (no pre-release beats any pre-release)
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0", "1.0.0-dev"));
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-dev", "1.0.0"));
+}
+
+void test_version_prerelease_equal(void) {
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-alpha", "1.0.0-alpha"));
+}
+
+void test_version_prerelease_alpha_vs_beta(void) {
+    // "beta" > "alpha" lexicographically
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-beta", "1.0.0-alpha"));
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-alpha", "1.0.0-beta"));
+}
+
+void test_version_prerelease_numeric_identifier(void) {
+    // Numeric identifiers compared as integers
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-2", "1.0.0-1"));
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-1", "1.0.0-2"));
+}
+
+void test_version_prerelease_alpha_over_numeric(void) {
+    // Per semver: alphanumeric identifiers have higher precedence than numeric
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-alpha", "1.0.0-1"));
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-1", "1.0.0-alpha"));
+}
+
+void test_version_prerelease_dotted_fields(void) {
+    // 1.0.0-alpha.2 > 1.0.0-alpha.1
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-alpha.2", "1.0.0-alpha.1"));
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-alpha.1", "1.0.0-alpha.2"));
+}
+
+void test_version_prerelease_more_fields_greater(void) {
+    // 1.0.0-alpha.1 > 1.0.0-alpha  (more fields = higher precedence)
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-alpha.1", "1.0.0-alpha"));
+    TEST_ASSERT_FALSE(OtaManager::isNewerVersion("1.0.0-alpha", "1.0.0-alpha.1"));
+}
+
+void test_version_prerelease_semver_example_order(void) {
+    // Canonical semver §11.4 example ordering:
+    // 1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta
+    //   < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-alpha.1",   "1.0.0-alpha"));
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-alpha.beta", "1.0.0-alpha.1"));
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-beta",       "1.0.0-alpha.beta"));
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-beta.2",     "1.0.0-beta"));
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-beta.11",    "1.0.0-beta.2"));
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0-rc.1",       "1.0.0-beta.11"));
+    TEST_ASSERT_TRUE(OtaManager::isNewerVersion("1.0.0",            "1.0.0-rc.1"));
+}
+
 // ── resultString() ────────────────────────────────────────────────────────────
 
 void test_result_string_ok(void) {
@@ -145,6 +200,16 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_version_from_zero);
     RUN_TEST(test_version_large_numbers);
     RUN_TEST(test_version_minor_carries_over_patch);
+
+    // pre-release (semver §9 / §11)
+    RUN_TEST(test_version_release_newer_than_prerelease);
+    RUN_TEST(test_version_prerelease_equal);
+    RUN_TEST(test_version_prerelease_alpha_vs_beta);
+    RUN_TEST(test_version_prerelease_numeric_identifier);
+    RUN_TEST(test_version_prerelease_alpha_over_numeric);
+    RUN_TEST(test_version_prerelease_dotted_fields);
+    RUN_TEST(test_version_prerelease_more_fields_greater);
+    RUN_TEST(test_version_prerelease_semver_example_order);
 
     // resultString
     RUN_TEST(test_result_string_ok);

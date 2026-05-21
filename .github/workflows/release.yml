@@ -1,0 +1,72 @@
+name: Release Firmware
+
+# Triggered when a semver tag (e.g. v1.2.3 or v1.2.3-rc.1) is pushed.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # required to create a GitHub Release
+
+    steps:
+      - name: Checkout repository (with community-sdk submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Fetch full history so git describe and tag listing work correctly.
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO Core
+        run: |
+          pip install --upgrade pip
+          pip install platformio
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .pio
+          key: ${{ runner.os }}-pio-release-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-release-
+            ${{ runner.os }}-pio-
+
+      - name: Derive version from tag and patch platformio.ini
+        run: |
+          # GITHUB_REF_NAME is the tag, e.g. "v1.2.3" or "v1.2.3-rc.1".
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "GIT_COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          python3 tools/set_version.py "$VERSION"
+
+      - name: Build release firmware
+        run: pio run -e release
+
+      - name: Rename firmware artifact
+        run: |
+          cp .pio/build/release/firmware.bin \
+             "firmware-${{ github.ref_name }}.bin"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ github.ref_name }}" \
+            --generate-notes \
+            "firmware-${{ github.ref_name }}.bin#firmware (${{ github.ref_name }})"
