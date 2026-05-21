@@ -10,7 +10,8 @@ BrowseScreen::BrowseScreen(JournalManager& jm, X4Display& display,
                             X4Input& input, X4Clock& clock,
                             SleepScreen& sleepScreen, VaultManager* vault)
     : _jm(jm), _display(display), _input(input), _clock(clock),
-      _sleepScreen(sleepScreen), _vault(vault)
+      _sleepScreen(sleepScreen), _vault(vault),
+      _itemH(_display.lineHeight(SCALE))
 {}
 
 BrowseResult BrowseScreen::run(String& outPath) {
@@ -41,7 +42,7 @@ BrowseResult BrowseScreen::run(String& outPath) {
 
     const int totalItems  = (int)labels.size();
     const int dispH       = _display.height();
-    const int linesPerPage = (dispH - HEADER_H) / ITEM_H;
+    const int linesPerPage = (dispH - HEADER_H) / _itemH;
 
     int selected = 0;
     int topRow   = 0;
@@ -122,7 +123,7 @@ void BrowseScreen::_render(const std::vector<String>& labels,
     _clock.currentYearMonth(year, month);
     char monthBuf[12];
     snprintf(monthBuf, sizeof(monthBuf), "%04u-%02u", year, month);
-    uint16_t monthLabelW = (uint16_t)(strlen(monthBuf) * FONT5X7_ADVANCE * SCALE);
+    uint16_t monthLabelW = (uint16_t)(strlen(monthBuf) * _display.charAdvance(SCALE));
     _display.drawText(fb, dispW - monthLabelW - 4, 4, monthBuf, false, SCALE);
 
     // Today's writing prompt (scale 1, below the title row)
@@ -136,16 +137,16 @@ void BrowseScreen::_render(const std::vector<String>& labels,
 
     // ── Entry list ────────────────────────────────────────────────────────────
     const int visibleCount = (int)labels.size();
-    for (int i = 0; i < (int)((dispH - HEADER_H) / ITEM_H); i++) {
+    for (int i = 0; i < (int)((dispH - HEADER_H) / _itemH); i++) {
         int idx = topRow + i;
         if (idx >= visibleCount) break;
 
-        uint16_t itemY = HEADER_H + (uint16_t)(i * ITEM_H);
+        uint16_t itemY = HEADER_H + (uint16_t)(i * _itemH);
         bool sel = (idx == selected);
 
         if (sel) {
             // Highlight bar
-            _display.fillRect(fb, 0, itemY, dispW, ITEM_H, true);
+            _display.fillRect(fb, 0, itemY, dispW, _itemH, true);
         }
         _display.drawText(fb, 4, itemY + 2, labels[idx].c_str(), sel, SCALE);
     }

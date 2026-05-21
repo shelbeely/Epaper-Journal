@@ -46,11 +46,12 @@ private:
     VaultManager*   _vault;
 
     static constexpr uint8_t  SCALE       = 2;
-    // Header area: title row (18px) + prompt row (9px) + padding = 44px.
+    // Header area: title row + prompt row + padding (fixed layout).
     static constexpr uint8_t  HEADER_H    = 44;
-    static constexpr uint8_t  ITEM_H      = FONT5X7_LINE_H * SCALE; // 18px per item
     // Number of fixed items before the entry list
     static constexpr uint8_t  FIXED_ITEMS = 3;  // NEW_ENTRY + STREAK + VAULT
+
+    uint16_t _itemH;  ///< Line height of the active font at SCALE (runtime)
 
     void _render(const std::vector<String>& labels,
                  int selected, int topRow);

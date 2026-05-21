@@ -7,8 +7,9 @@
 //   0 = white (off), 1 = black (on).
 //   Advance = 6 pixels per character (5 glyph + 1 gap).
 //
-// IMPORTANT: include this header from exactly ONE .cpp file (X4Display.cpp).
+// IMPORTANT: include this header from exactly ONE .cpp file (FontData.cpp).
 // ─────────────────────────────────────────────────────────────────────────────
+#include "BitmapFont.h"
 
 static const uint8_t FONT5X7[95][5] = {
     {0x00,0x00,0x00,0x00,0x00}, // 0x20 ' '
@@ -108,5 +109,18 @@ static const uint8_t FONT5X7[95][5] = {
     {0x0C,0x02,0x12,0x20,0x0C}, // 0x7E '~'
 };
 // NOTE: Glyph dimension constants are defined in X4Display.h (FONT5X7_*).
-// Font5x7.h must only be included from X4Display.cpp to avoid duplicate
+// Font5x7.h must only be included from FontData.cpp to avoid duplicate
 // definitions of the static FONT5X7 array.
+
+// BitmapFont descriptor for FONT5X7 (column-major format).
+static const BitmapFont FONT_5X7_INSTANCE = {
+    /* data        */ &FONT5X7[0][0],
+    /* bytesPerRow */ 1,          // unused (column-major)
+    /* glyphW      */ 5,
+    /* glyphH      */ 7,
+    /* advance     */ 6,
+    /* lineH       */ 9,
+    /* firstChar   */ 0x20,
+    /* numChars    */ 95,
+    /* columnMajor */ true,
+};

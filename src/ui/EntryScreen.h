@@ -28,9 +28,10 @@ private:
     SleepScreen& _sleepScreen;
 
     static constexpr uint8_t SCALE    = 2;
-    static constexpr uint8_t TITLE_H  = FONT5X7_LINE_H * SCALE * 2; // title row height
-    static constexpr uint8_t BODY_Y   = TITLE_H + 4;                 // y where body starts
-    static constexpr uint8_t ITEM_H   = FONT5X7_LINE_H * SCALE;      // line height
+
+    uint16_t _titleH;  ///< Title row height = lineHeight(SCALE)*2 (runtime)
+    uint16_t _bodyY;   ///< Y where body starts = _titleH + 4 (runtime)
+    uint16_t _itemH;   ///< Line height at SCALE (runtime)
 
     // Render one page of Markdown lines starting at `topLine`.
     void _renderPage(const String& title, const std::vector<MdLine>& lines,

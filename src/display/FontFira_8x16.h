@@ -112,7 +112,7 @@ static const uint8_t FONT_FIRA_8X16_DATA[95][16] = {
 };
 // clang-format on
 
-static const BitmapFont FONT_FIRA_8X16 = {
+static const BitmapFont FONT_FIRA_8X16_INSTANCE = {
     /* data       */ &FONT_FIRA_8X16_DATA[0][0],
     /* bytesPerRow */ 1,
     /* glyphW     */ 8,

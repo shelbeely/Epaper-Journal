@@ -127,8 +127,8 @@ void PinScreen::_render(const uint8_t digits[PIN_LEN], uint8_t cursor) {
 
         // Draw digit
         char d[2] = {'0' + digits[i], '\0'};
-        uint16_t charW = FONT5X7_ADVANCE * SCALE;
-        uint16_t charH = FONT5X7_LINE_H * SCALE;
+        uint16_t charW = _display.charAdvance(SCALE);
+        uint16_t charH = _display.lineHeight(SCALE);
         uint16_t charX = x + (BOX_W - charW) / 2;
         uint16_t charY = boxY + (BOX_H - charH) / 2;
         _display.drawText(fb, charX, charY, d, sel, SCALE);
