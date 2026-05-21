@@ -66,6 +66,20 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
     const uint16_t charAdv = FONT5X7_ADVANCE * SCALE;
     const uint16_t margin  = 4;
 
+    // ── XJL marker zone constants ─────────────────────────────────────────────
+    // All task/signifier types share a 2-char-wide marker zone;
+    // text starts at margin + 2*charAdv.
+    const uint16_t textX_bj = margin + charAdv * 2;          // 28 px at scale 2
+
+    // Checkbox: 10×10 px, vertically centred in ITEM_H
+    const uint16_t BOX_SZ  = (uint16_t)(SCALE * 5);          // 10 px
+    const uint16_t BOX_OFF = (uint16_t)((ITEM_H - BOX_SZ) / 2); // 4 px
+    const uint16_t boxX    = margin;
+    const uint16_t boxY    = y + BOX_OFF;
+
+    // Glyph y for 1-char signifiers (centre 14px glyph in 18px ITEM_H = +2 px)
+    const uint16_t glyphY  = y + (uint16_t)((ITEM_H - FONT5X7_GLYPH_H * SCALE) / 2);
+
     switch (line.type) {
 
     case MD_H1: {
@@ -120,6 +134,72 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
         // Centred 2 px horizontal rule
         uint16_t ruleY = y + ITEM_H / 2 - 1;
         _display.fillRect(fb, margin, ruleY, dispW - margin * 2, 2, true);
+        break;
+    }
+
+    // ── XJL task types ────────────────────────────────────────────────────────
+
+    case MD_TASK_OPEN: {
+        // Draw empty checkbox outline (10×10 px)
+        _display.fillRect(fb, boxX,              boxY,              BOX_SZ, 1,      true); // top
+        _display.fillRect(fb, boxX,              boxY + BOX_SZ - 1, BOX_SZ, 1,      true); // bottom
+        _display.fillRect(fb, boxX,              boxY,              1,      BOX_SZ, true); // left
+        _display.fillRect(fb, boxX + BOX_SZ - 1, boxY,              1,      BOX_SZ, true); // right
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_TASK_DONE: {
+        // Draw filled checkbox (outer border + inner fill)
+        _display.fillRect(fb, boxX,              boxY,              BOX_SZ, 1,      true); // top
+        _display.fillRect(fb, boxX,              boxY + BOX_SZ - 1, BOX_SZ, 1,      true); // bottom
+        _display.fillRect(fb, boxX,              boxY,              1,      BOX_SZ, true); // left
+        _display.fillRect(fb, boxX + BOX_SZ - 1, boxY,              1,      BOX_SZ, true); // right
+        _display.fillRect(fb, boxX + 2,          boxY + 2,          BOX_SZ - 4, BOX_SZ - 4, true); // fill
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
+        // Strikethrough: 1 px line at glyph vertical midpoint
+        if (line.strikethrough) {
+            uint16_t tLen    = (uint16_t)line.text.length();
+            uint16_t tW      = (uint16_t)(tLen * charAdv);
+            uint16_t maxW    = (dispW > textX_bj + 4u) ? dispW - textX_bj - 4u : 0u;
+            if (tW > maxW) tW = maxW;
+            uint16_t strikeY = y + (uint16_t)(FONT5X7_GLYPH_H * SCALE / 2);
+            if (tW > 0) _display.fillRect(fb, textX_bj, strikeY, tW, 1, true);
+        }
+        break;
+    }
+
+    case MD_TASK_MIGRATED: {
+        // Forward arrow: draw '>' glyph, text to right
+        _display.drawChar(fb, margin + 2, glyphY, '>', false, SCALE);
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_TASK_SCHEDULED: {
+        // Back arrow: draw '<' glyph, text to right
+        _display.drawChar(fb, margin + 2, glyphY, '<', false, SCALE);
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    // ── XJL signifier types ───────────────────────────────────────────────────
+
+    case MD_PRIORITY: {
+        _display.drawChar(fb, margin + 2, glyphY, '!', false, SCALE);
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_EVENT: {
+        _display.drawChar(fb, margin + 2, glyphY, '@', false, SCALE);
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_QUESTION: {
+        _display.drawChar(fb, margin + 2, glyphY, '?', false, SCALE);
+        _display.drawText(fb, textX_bj, y, line.text.c_str(), false, SCALE);
         break;
     }
 

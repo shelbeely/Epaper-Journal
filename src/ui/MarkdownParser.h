@@ -1,12 +1,11 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-// MarkdownParser.h — Subset Markdown → display-line converter
+// MarkdownParser.h — XJL (Xteink Journal Language) parser
 //
-// Parses a journal body string into a flat list of word-wrapped MdLine
-// structs that EntryScreen can render directly on the e-paper display.
+// A Markdown subset extended with Bullet Journal signifiers, optimised for
+// the Xteink X4 800×480 e-paper display (1-bit, 5×7 bitmap font).
 //
-// Supported syntax
-// ────────────────
+// ── Standard Markdown subset ────────────────────────────────────────────────
 //  # H1          → inverted (white-on-black) full-width bar
 //  ## H2         → underline separator beneath the text
 //  ### H3        → 1-char indent
@@ -18,6 +17,22 @@
 //
 //  Inline stripping (markers removed, inner text kept):
 //    **bold**  *italic*  _italic_  `code`  [text](url)  ![alt](url)
+//
+// ── XJL Bullet Journal extensions ───────────────────────────────────────────
+//  Tasks — use the GitHub-style `- [x]` notation for easy web-editor entry:
+//    - [ ] text  → open task     (empty checkbox □)
+//    - [x] text  → done task     (filled checkbox ■ + strikethrough text)
+//    - [X] text  → done task     (same as [x])
+//    - [>] text  → migrated      (forward arrow >, text to right)
+//    - [<] text  → scheduled     (back arrow <, text to right)
+//
+//  Signifiers — single punctuation character at the start of a line:
+//    ! text      → priority      (! glyph, text to right)
+//    @ text      → event         (@ glyph, text to right)
+//    ? text      → question      (? glyph, text to right)
+//
+//  Marker zone: all task/signifier types reserve 2 char-widths (24 px at
+//  scale 2) for the marker; text starts after that zone.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <Arduino.h>
@@ -33,12 +48,21 @@ enum MdLineType : uint8_t {
     MD_BLOCKQUOTE,
     MD_HLINE,
     MD_BLANK,
+    // ── XJL Bullet Journal extensions ────────────────────────────────────────
+    MD_TASK_OPEN,       // - [ ] text  → open task (empty checkbox)
+    MD_TASK_DONE,       // - [x] text  → done (filled checkbox + strikethrough)
+    MD_TASK_MIGRATED,   // - [>] text  → migrated to future
+    MD_TASK_SCHEDULED,  // - [<] text  → scheduled / moved back
+    MD_PRIORITY,        // ! text      → priority signifier
+    MD_EVENT,           // @ text      → event signifier
+    MD_QUESTION,        // ? text      → question / reflection signifier
 };
 
 struct MdLine {
     MdLineType type;
     String     text;
-    bool       continuation; // true = wrapped continuation of the same block
+    bool       continuation = false; // true = wrapped continuation of the same block
+    bool       strikethrough = false; // true = draw strikethrough (MD_TASK_DONE)
 };
 
 class MarkdownParser {

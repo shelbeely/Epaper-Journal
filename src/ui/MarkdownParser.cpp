@@ -187,16 +187,20 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
 
     // Per-type character budgets (accounting for indent pixels at base scale).
     // These are conservative approximations based on typical display widths.
-    // Bullet:     "- " drawn separately; text indented 2 chars → -2
-    // Blockquote: left bar + 1-char gap → -1
-    // Ordered:    "N. " in the text on the first line → same as normal;
-    //             continuation indented 3 chars → -3
-    const uint16_t maxH         = maxCharsNormal;
-    const uint16_t maxBullet    = (maxCharsNormal > 2) ? maxCharsNormal - 2 : 1;
-    const uint16_t maxBulletCont= maxBullet;
-    const uint16_t maxOrdered   = maxCharsNormal;
-    const uint16_t maxOrdCont   = (maxCharsNormal > 3) ? maxCharsNormal - 3 : 1;
-    const uint16_t maxBQ        = (maxCharsNormal > 1) ? maxCharsNormal - 1 : 1;
+    // Bullet:       "- " drawn separately; text indented 2 chars → -2
+    // Blockquote:   left bar + 1-char gap → -1
+    // Ordered:      "N. " in the text on the first line → same as normal;
+    //               continuation indented 3 chars → -3
+    // Tasks:        marker zone = 2 char-widths → -2
+    // Signifiers:   marker zone = 2 char-widths → -2
+    const uint16_t maxH            = maxCharsNormal;
+    const uint16_t maxBullet       = (maxCharsNormal > 2) ? maxCharsNormal - 2 : 1;
+    const uint16_t maxBulletCont   = maxBullet;
+    const uint16_t maxOrdered      = maxCharsNormal;
+    const uint16_t maxOrdCont      = (maxCharsNormal > 3) ? maxCharsNormal - 3 : 1;
+    const uint16_t maxBQ           = (maxCharsNormal > 1) ? maxCharsNormal - 1 : 1;
+    const uint16_t maxCharsTask    = (maxCharsNormal > 2) ? maxCharsNormal - 2 : 1;
+    const uint16_t maxCharsSignify = maxCharsTask;
 
     int  len = (int)body.length();
     int  i   = 0;
@@ -247,6 +251,44 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             }
         }
 
+        // ── XJL Bullet Journal tasks: - [ ]  - [x]  - [>]  - [<] ───────────────
+        // Must be checked before the generic "- item" bullet rule because both
+        // begin with "- ".  Pattern: - [<mark>] text  (length ≥ 6).
+        if (raw.length() >= 6 &&
+            raw[0] == '-' && raw[1] == ' ' &&
+            raw[2] == '[' && raw[4] == ']' && raw[5] == ' ') {
+            char mark = raw[3];
+            MdLineType t;
+            bool isDone = false;
+
+            if (mark == ' ') {
+                t = MD_TASK_OPEN;
+            } else if (mark == 'x' || mark == 'X') {
+                t      = MD_TASK_DONE;
+                isDone = true;
+            } else if (mark == '>') {
+                t = MD_TASK_MIGRATED;
+            } else if (mark == '<') {
+                t = MD_TASK_SCHEDULED;
+            } else {
+                // Unknown mark → fall through to generic bullet below
+                goto xjl_bullet_fallthrough;
+            }
+
+            {
+                String text     = stripInline(raw.substring(6));
+                int    prevSize = (int)out.size();
+                _wrapAppend(out, t, text, maxCharsTask, maxCharsTask);
+                if (isDone) {
+                    for (int k = prevSize; k < (int)out.size(); k++) {
+                        out[k].strikethrough = true;
+                    }
+                }
+            }
+            continue;
+        }
+        xjl_bullet_fallthrough:
+
         // ── Unordered list: - / * / + (followed by a space) ──────────────────
         if (raw.length() >= 2 &&
             (raw[0] == '-' || raw[0] == '*' || raw[0] == '+') &&
@@ -282,6 +324,20 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             String text = stripInline(raw.substring(1));
             _wrapAppend(out, MD_BLOCKQUOTE, text, maxBQ, maxBQ);
             continue;
+        }
+
+        // ── XJL signifiers: ! / @ / ? (at line start, followed by a space) ────
+        if (raw.length() >= 2 && raw[1] == ' ') {
+            MdLineType t = MD_NORMAL;
+            if      (raw[0] == '!') t = MD_PRIORITY;
+            else if (raw[0] == '@') t = MD_EVENT;
+            else if (raw[0] == '?') t = MD_QUESTION;
+
+            if (t != MD_NORMAL) {
+                String text = stripInline(raw.substring(2));
+                _wrapAppend(out, t, text, maxCharsSignify, maxCharsSignify);
+                continue;
+            }
         }
 
         // ── Normal paragraph ──────────────────────────────────────────────────

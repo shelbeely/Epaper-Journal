@@ -257,6 +257,155 @@ void test_parse_multiline(void) {
     TEST_ASSERT_EQUAL(MD_NORMAL, lines[2].type);
 }
 
+// ── XJL tasks: open ──────────────────────────────────────────────────────────
+
+void test_parse_task_open(void) {
+    auto lines = MarkdownParser::parse("- [ ] buy milk", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_OPEN, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("buy milk", lines[0].text.c_str());
+    TEST_ASSERT_FALSE(lines[0].continuation);
+    TEST_ASSERT_FALSE(lines[0].strikethrough);
+}
+
+void test_parse_task_open_empty_text(void) {
+    auto lines = MarkdownParser::parse("- [ ] ", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_OPEN, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("", lines[0].text.c_str());
+}
+
+// ── XJL tasks: done ──────────────────────────────────────────────────────────
+
+void test_parse_task_done_lowercase(void) {
+    auto lines = MarkdownParser::parse("- [x] done task", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_DONE, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("done task", lines[0].text.c_str());
+    TEST_ASSERT_TRUE(lines[0].strikethrough);
+    TEST_ASSERT_FALSE(lines[0].continuation);
+}
+
+void test_parse_task_done_uppercase(void) {
+    auto lines = MarkdownParser::parse("- [X] Done uppercase", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_DONE, lines[0].type);
+    TEST_ASSERT_TRUE(lines[0].strikethrough);
+}
+
+void test_parse_task_done_wraps_all_strikethrough(void) {
+    // Short maxChars forces wrap; all wrapped lines should have strikethrough
+    auto lines = MarkdownParser::parse("- [x] word one two", 10);
+    TEST_ASSERT_GREATER_THAN(1, (int)lines.size());
+    for (auto& l : lines) {
+        TEST_ASSERT_EQUAL(MD_TASK_DONE, l.type);
+        TEST_ASSERT_TRUE(l.strikethrough);
+    }
+}
+
+void test_parse_task_done_inline_stripped(void) {
+    auto lines = MarkdownParser::parse("- [x] **done** task", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL_STRING("done task", lines[0].text.c_str());
+}
+
+// ── XJL tasks: migrated / scheduled ─────────────────────────────────────────
+
+void test_parse_task_migrated(void) {
+    auto lines = MarkdownParser::parse("- [>] moved forward", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_MIGRATED, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("moved forward", lines[0].text.c_str());
+    TEST_ASSERT_FALSE(lines[0].strikethrough);
+}
+
+void test_parse_task_scheduled(void) {
+    auto lines = MarkdownParser::parse("- [<] pushed back", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_SCHEDULED, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("pushed back", lines[0].text.c_str());
+}
+
+void test_parse_task_unknown_mark_falls_to_bullet(void) {
+    // - [?] is not a known task mark → treated as plain bullet "[ ?] ..."
+    // but actually: raw[2]='[', raw[4]=']', raw[5]=' ' so it matches the
+    // task check; mark='?' is unknown → falls through to goto → generic bullet.
+    // The text after generic bullet start "- " is "[?] some text".
+    auto lines = MarkdownParser::parse("- [z] unknown", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("[z] unknown", lines[0].text.c_str());
+}
+
+void test_parse_task_not_matched_without_closing_bracket_space(void) {
+    // "- [x]text" (no space after ]) → not a task, falls to bullet
+    auto lines = MarkdownParser::parse("- [x]text", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET, lines[0].type);
+}
+
+// ── XJL signifiers ────────────────────────────────────────────────────────────
+
+void test_parse_signifier_priority(void) {
+    auto lines = MarkdownParser::parse("! important thing", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_PRIORITY, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("important thing", lines[0].text.c_str());
+    TEST_ASSERT_FALSE(lines[0].strikethrough);
+}
+
+void test_parse_signifier_event(void) {
+    auto lines = MarkdownParser::parse("@ dentist 10am", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_EVENT, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("dentist 10am", lines[0].text.c_str());
+}
+
+void test_parse_signifier_question(void) {
+    auto lines = MarkdownParser::parse("? why did I do that", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_QUESTION, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("why did I do that", lines[0].text.c_str());
+}
+
+void test_parse_signifier_inline_stripped(void) {
+    auto lines = MarkdownParser::parse("! **urgent** deadline", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_PRIORITY, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("urgent deadline", lines[0].text.c_str());
+}
+
+void test_parse_signifier_no_space_is_normal(void) {
+    // "!text" (no space after !) → normal paragraph (not a signifier)
+    auto lines = MarkdownParser::parse("!text", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
+void test_parse_signifier_question_wraps(void) {
+    // Ensure continuation flag works for wrapped signifier lines
+    auto lines = MarkdownParser::parse("? one two three four", 8);
+    TEST_ASSERT_GREATER_THAN(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_QUESTION, lines[0].type);
+    TEST_ASSERT_FALSE(lines[0].continuation);
+    for (int i = 1; i < (int)lines.size(); i++) {
+        TEST_ASSERT_EQUAL(MD_QUESTION, lines[i].type);
+        TEST_ASSERT_TRUE(lines[i].continuation);
+    }
+}
+
+// ── XJL: strikethrough field is false for non-done types ─────────────────────
+
+void test_strikethrough_false_for_open_task(void) {
+    auto lines = MarkdownParser::parse("- [ ] not done", 40);
+    TEST_ASSERT_FALSE(lines[0].strikethrough);
+}
+
+void test_strikethrough_false_for_normal(void) {
+    auto lines = MarkdownParser::parse("normal line", 40);
+    TEST_ASSERT_FALSE(lines[0].strikethrough);
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -303,6 +452,29 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_parse_inline_stripped_in_heading);
 
     RUN_TEST(test_parse_multiline);
+
+    // ── XJL tasks ──
+    RUN_TEST(test_parse_task_open);
+    RUN_TEST(test_parse_task_open_empty_text);
+    RUN_TEST(test_parse_task_done_lowercase);
+    RUN_TEST(test_parse_task_done_uppercase);
+    RUN_TEST(test_parse_task_done_wraps_all_strikethrough);
+    RUN_TEST(test_parse_task_done_inline_stripped);
+    RUN_TEST(test_parse_task_migrated);
+    RUN_TEST(test_parse_task_scheduled);
+    RUN_TEST(test_parse_task_unknown_mark_falls_to_bullet);
+    RUN_TEST(test_parse_task_not_matched_without_closing_bracket_space);
+
+    // ── XJL signifiers ──
+    RUN_TEST(test_parse_signifier_priority);
+    RUN_TEST(test_parse_signifier_event);
+    RUN_TEST(test_parse_signifier_question);
+    RUN_TEST(test_parse_signifier_inline_stripped);
+    RUN_TEST(test_parse_signifier_no_space_is_normal);
+    RUN_TEST(test_parse_signifier_question_wraps);
+
+    RUN_TEST(test_strikethrough_false_for_open_task);
+    RUN_TEST(test_strikethrough_false_for_normal);
 
     return UNITY_END();
 }
