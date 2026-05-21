@@ -52,6 +52,16 @@
   #define IDLE_SLEEP_TIMEOUT_MS 300000UL  // 5 minutes
 #endif
 
+// ── E-Ink display quality ─────────────────────────────────────────────────────
+// After this many consecutive fast refreshes, X4Display::fastRefresh()
+// automatically performs a full refresh instead to clear ghosting artifacts.
+// Increase the value for snappier navigation (more ghosting risk) or decrease
+// for cleaner images (occasional slow refresh during heavy navigation).
+// Set to 0 to disable auto-ghosting cleanup entirely.
+#ifndef GHOSTING_FULL_REFRESH_INTERVAL
+  #define GHOSTING_FULL_REFRESH_INTERVAL 8
+#endif
+
 // ── Firmware identity (overridden by build flags) ────────────────────────────
 #ifndef FIRMWARE_VERSION
   #define FIRMWARE_VERSION "0.1.0"

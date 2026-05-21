@@ -30,15 +30,38 @@ bool X4Display::init() {
 void X4Display::fullRefresh() {
     X4_DLOG(X4M_DISPLAY_FULL_REFRESH_START);
     uint32_t t0 = millis();
+    _fastRefreshCount = 0;
     _eink.displayBuffer(EInkDisplay::FULL_REFRESH);
     _recordRefresh("full", millis() - t0);
     X4_LOG(X4M_DISPLAY_REFRESH_OK);
 }
 
+void X4Display::halfRefresh() {
+    uint32_t t0 = millis();
+    _fastRefreshCount = 0;
+    _eink.displayBuffer(EInkDisplay::HALF_REFRESH);
+    _recordRefresh("half", millis() - t0);
+    X4_LOG(X4M_DISPLAY_REFRESH_OK);
+}
+
 void X4Display::fastRefresh() {
     uint32_t t0 = millis();
+
+    // Auto-upgrade to a full refresh after GHOSTING_FULL_REFRESH_INTERVAL
+    // consecutive fast refreshes to clear accumulated ghosting artifacts.
+#if GHOSTING_FULL_REFRESH_INTERVAL > 0
+    if (++_fastRefreshCount >= GHOSTING_FULL_REFRESH_INTERVAL) {
+        _fastRefreshCount = 0;
+        _eink.displayBuffer(EInkDisplay::FULL_REFRESH);
+        _recordRefresh("full-ghost", millis() - t0);
+    } else {
+        _eink.displayBuffer(EInkDisplay::FAST_REFRESH);
+        _recordRefresh("fast", millis() - t0);
+    }
+#else
     _eink.displayBuffer(EInkDisplay::FAST_REFRESH);
     _recordRefresh("fast", millis() - t0);
+#endif
     X4_LOG(X4M_DISPLAY_REFRESH_OK);
 }
 
@@ -64,6 +87,7 @@ void X4Display::sleep() {
 
 void X4Display::wake() {
     // deepSleep() requires a hardware reset to wake; re-init the controller.
+    _fastRefreshCount = 0;
     _eink.begin();
     X4_DLOG(X4M_DISPLAY_WAKE_OK);
 }
@@ -331,15 +355,37 @@ void X4Display::fillRect(uint8_t* fb, uint16_t x, uint16_t y,
     uint16_t dispH  = height();
     uint16_t wBytes = dispW / 8;
 
+    uint16_t xEnd = (x + w < dispW) ? x + w : dispW;
+    uint8_t  fill = black ? 0x00 : 0xFF;
+
     for (uint16_t py = y; py < y + h && py < dispH; py++) {
-        for (uint16_t px = x; px < x + w && px < dispW; px++) {
+        uint16_t px = x;
+
+        // ── Leading unaligned pixels (until the next byte boundary) ──────────
+        while (px < xEnd && (px % 8) != 0) {
             uint16_t byteIdx = py * wBytes + px / 8;
             uint8_t  bitMask = 0x80 >> (px % 8);
-            if (black) {
-                fb[byteIdx] &= ~bitMask;
-            } else {
-                fb[byteIdx] |= bitMask;
-            }
+            if (black) fb[byteIdx] &= ~bitMask;
+            else       fb[byteIdx] |=  bitMask;
+            px++;
+        }
+
+        // ── Full-byte aligned span: write 8 pixels per byte ──────────────────
+        uint16_t fullEnd = xEnd & ~0x7u; // round down to byte boundary
+        if (fullEnd > px) {
+            uint16_t startByte = px / 8;
+            uint16_t byteCount = (fullEnd - px) / 8;
+            memset(fb + py * wBytes + startByte, fill, byteCount);
+            px = fullEnd;
+        }
+
+        // ── Trailing unaligned pixels ─────────────────────────────────────────
+        while (px < xEnd) {
+            uint16_t byteIdx = py * wBytes + px / 8;
+            uint8_t  bitMask = 0x80 >> (px % 8);
+            if (black) fb[byteIdx] &= ~bitMask;
+            else       fb[byteIdx] |=  bitMask;
+            px++;
         }
     }
 }
