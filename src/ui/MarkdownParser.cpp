@@ -72,6 +72,32 @@ String MarkdownParser::stripInline(const String& s) {
             }
         }
 
+        // ~~strikethrough~~ — strip markers, keep inner text
+        if (i + 1 < len && s[i] == '~' && s[i + 1] == '~') {
+            int close = s.indexOf("~~", i + 2);
+            if (close >= 0) {
+                result += s.substring(i + 2, close);
+                i = close + 2;
+            } else {
+                result += "~~";
+                i += 2;
+            }
+            continue;
+        }
+
+        // ==highlight== — strip markers, keep inner text
+        if (i + 1 < len && s[i] == '=' && s[i + 1] == '=') {
+            int close = s.indexOf("==", i + 2);
+            if (close >= 0) {
+                result += s.substring(i + 2, close);
+                i = close + 2;
+            } else {
+                result += "==";
+                i += 2;
+            }
+            continue;
+        }
+
         // `code`
         if (s[i] == '`') {
             int close = s.indexOf('`', i + 1);
@@ -201,9 +227,12 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
     const uint16_t maxBQ           = (maxCharsNormal > 1) ? maxCharsNormal - 1 : 1;
     const uint16_t maxCharsTask    = (maxCharsNormal > 2) ? maxCharsNormal - 2 : 1;
     const uint16_t maxCharsSignify = maxCharsTask;
+    const uint16_t maxCodeBlock    = maxBQ;
+    const uint16_t maxBulletNested = (maxCharsNormal > 4) ? maxCharsNormal - 4 : 1;
 
     int  len = (int)body.length();
     int  i   = 0;
+    bool inCodeFence = false;
 
     while (i <= len) {
         // Extract one raw input line
@@ -220,11 +249,34 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
 
         // ── Blank line ────────────────────────────────────────────────────────
         if (raw.length() == 0) {
-            MdLine ml;
-            ml.type         = MD_BLANK;
-            ml.text         = "";
-            ml.continuation = false;
-            out.push_back(ml);
+            if (inCodeFence) {
+                // Preserve blank lines inside code fences as empty code lines
+                MdLine ml;
+                ml.type         = MD_CODE_BLOCK;
+                ml.text         = "";
+                ml.continuation = false;
+                out.push_back(ml);
+            } else {
+                MdLine ml;
+                ml.type         = MD_BLANK;
+                ml.text         = "";
+                ml.continuation = false;
+                out.push_back(ml);
+            }
+            continue;
+        }
+
+        // ── Code fence toggle: ``` or ~~~ ────────────────────────────────────
+        if (raw.length() >= 3 &&
+            ((raw[0] == '`' && raw[1] == '`' && raw[2] == '`') ||
+             (raw[0] == '~' && raw[1] == '~' && raw[2] == '~'))) {
+            inCodeFence = !inCodeFence;
+            continue;
+        }
+
+        // ── Inside code fence: emit lines literally (no inline stripping) ────
+        if (inCodeFence) {
+            _wrapAppend(out, MD_CODE_BLOCK, raw, maxCodeBlock, maxCodeBlock);
             continue;
         }
 
@@ -288,6 +340,25 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             continue;
         }
         xjl_bullet_fallthrough:
+
+        // ── Indented (nested) bullet: 2+ spaces or tab then - / * / + ────────
+        {
+            int  indent = 0;
+            bool hasTab = false;
+            while (indent < (int)raw.length() &&
+                   (raw[indent] == ' ' || raw[indent] == '\t')) {
+                if (raw[indent] == '\t') hasTab = true;
+                indent++;
+            }
+            if ((indent >= 2 || hasTab) &&
+                indent + 1 < (int)raw.length() &&
+                (raw[indent] == '-' || raw[indent] == '*' || raw[indent] == '+') &&
+                raw[indent + 1] == ' ') {
+                String text = stripInline(raw.substring(indent + 2));
+                _wrapAppend(out, MD_BULLET_NESTED, text, maxBulletNested, maxBulletNested);
+                continue;
+            }
+        }
 
         // ── Unordered list: - / * / + (followed by a space) ──────────────────
         if (raw.length() >= 2 &&

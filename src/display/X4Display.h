@@ -27,6 +27,10 @@ public:
 
     // Frame-level operations
     void fullRefresh();
+    // Half-refresh (HALF_REFRESH mode, ~1720 ms): balanced quality and speed.
+    // Use for major content transitions where fast refresh ghosting is visible
+    // but a full 2-3 s refresh would be jarring.
+    void halfRefresh();
     void fastRefresh();
     void partialRefresh(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 
@@ -80,6 +84,10 @@ private:
     EInkDisplay _eink;
     X4DisplayStatus _status;
     bool _initialized = false;
+
+    // Counts consecutive fast refreshes; auto-upgrades to full at the
+    // GHOSTING_FULL_REFRESH_INTERVAL threshold to prevent ghosting buildup.
+    uint8_t _fastRefreshCount = 0;
 
     void _recordRefresh(const char* type, uint32_t durationMs);
     void _setError(const char* msg);

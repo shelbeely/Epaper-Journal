@@ -406,6 +406,147 @@ void test_strikethrough_false_for_normal(void) {
     TEST_ASSERT_FALSE(lines[0].strikethrough);
 }
 
+// ── Extended inline: ~~strikethrough~~ ───────────────────────────────────────
+
+void test_strip_strikethrough(void) {
+    String result = MarkdownParser::stripInline("~~struck~~");
+    TEST_ASSERT_EQUAL_STRING("struck", result.c_str());
+}
+
+void test_strip_strikethrough_unclosed(void) {
+    // No closing ~~ → emit tildes literally
+    String result = MarkdownParser::stripInline("~~unclosed");
+    TEST_ASSERT_EQUAL_STRING("~~unclosed", result.c_str());
+}
+
+void test_strip_strikethrough_mixed(void) {
+    String result = MarkdownParser::stripInline("keep ~~gone~~ keep");
+    TEST_ASSERT_EQUAL_STRING("keep gone keep", result.c_str());
+}
+
+// ── Extended inline: ==highlight== ───────────────────────────────────────────
+
+void test_strip_highlight(void) {
+    String result = MarkdownParser::stripInline("==marked==");
+    TEST_ASSERT_EQUAL_STRING("marked", result.c_str());
+}
+
+void test_strip_highlight_unclosed(void) {
+    // No closing == → emit equals literally
+    String result = MarkdownParser::stripInline("==unclosed");
+    TEST_ASSERT_EQUAL_STRING("==unclosed", result.c_str());
+}
+
+void test_strip_highlight_mixed(void) {
+    String result = MarkdownParser::stripInline("plain ==hi== plain");
+    TEST_ASSERT_EQUAL_STRING("plain hi plain", result.c_str());
+}
+
+// ── Fenced code blocks ────────────────────────────────────────────────────────
+
+void test_parse_code_block_basic(void) {
+    auto lines = MarkdownParser::parse("```\ncode line\n```", 40);
+    // Fence markers are consumed; one code line remains
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("code line", lines[0].text.c_str());
+    TEST_ASSERT_FALSE(lines[0].continuation);
+}
+
+void test_parse_code_block_with_language_tag(void) {
+    // Opening ``` can have a language identifier — still toggled and skipped
+    auto lines = MarkdownParser::parse("```cpp\nint x = 0;\n```", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("int x = 0;", lines[0].text.c_str());
+}
+
+void test_parse_code_block_preserves_inline_markers(void) {
+    // Inline markers inside code blocks must NOT be stripped
+    auto lines = MarkdownParser::parse("```\n**bold**\n```", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("**bold**", lines[0].text.c_str());
+}
+
+void test_parse_code_block_blank_line_inside(void) {
+    // Blank line inside a code fence → MD_CODE_BLOCK with empty text
+    auto lines = MarkdownParser::parse("```\nline1\n\nline2\n```", 40);
+    TEST_ASSERT_EQUAL(3, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("line1", lines[0].text.c_str());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[1].type);
+    TEST_ASSERT_EQUAL_STRING("", lines[1].text.c_str());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[2].type);
+    TEST_ASSERT_EQUAL_STRING("line2", lines[2].text.c_str());
+}
+
+void test_parse_code_block_tilde_fence(void) {
+    // ~~~ is an alternative fence marker
+    auto lines = MarkdownParser::parse("~~~\nhello\n~~~", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("hello", lines[0].text.c_str());
+}
+
+void test_parse_code_block_multiple_lines(void) {
+    auto lines = MarkdownParser::parse("```\nalpha\nbeta\ngamma\n```", 40);
+    TEST_ASSERT_EQUAL(3, (int)lines.size());
+    for (auto& l : lines) {
+        TEST_ASSERT_EQUAL(MD_CODE_BLOCK, l.type);
+    }
+    TEST_ASSERT_EQUAL_STRING("alpha", lines[0].text.c_str());
+    TEST_ASSERT_EQUAL_STRING("beta",  lines[1].text.c_str());
+    TEST_ASSERT_EQUAL_STRING("gamma", lines[2].text.c_str());
+}
+
+// ── Nested / indented bullets ─────────────────────────────────────────────────
+
+void test_parse_bullet_nested_two_spaces(void) {
+    auto lines = MarkdownParser::parse("  - nested item", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET_NESTED, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("nested item", lines[0].text.c_str());
+    TEST_ASSERT_FALSE(lines[0].continuation);
+}
+
+void test_parse_bullet_nested_tab(void) {
+    auto lines = MarkdownParser::parse("\t- tab indented", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET_NESTED, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("tab indented", lines[0].text.c_str());
+}
+
+void test_parse_bullet_nested_star(void) {
+    auto lines = MarkdownParser::parse("  * star nested", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET_NESTED, lines[0].type);
+}
+
+void test_parse_bullet_nested_inline_stripped(void) {
+    auto lines = MarkdownParser::parse("  - **bold** text", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET_NESTED, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("bold text", lines[0].text.c_str());
+}
+
+void test_parse_bullet_nested_wraps_with_continuation(void) {
+    // maxCharsNormal=12, nested budget=8; long text wraps
+    auto lines = MarkdownParser::parse("  - one two three four", 12);
+    TEST_ASSERT_GREATER_THAN(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BULLET_NESTED, lines[0].type);
+    TEST_ASSERT_FALSE(lines[0].continuation);
+    TEST_ASSERT_EQUAL(MD_BULLET_NESTED, lines[1].type);
+    TEST_ASSERT_TRUE(lines[1].continuation);
+}
+
+void test_parse_bullet_nested_single_space_is_normal(void) {
+    // Only one leading space → not a nested bullet; falls to normal text
+    auto lines = MarkdownParser::parse(" - one space", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -475,6 +616,32 @@ int main(int /*argc*/, char** /*argv*/) {
 
     RUN_TEST(test_strikethrough_false_for_open_task);
     RUN_TEST(test_strikethrough_false_for_normal);
+
+    // ── Extended inline: ~~strikethrough~~ ──
+    RUN_TEST(test_strip_strikethrough);
+    RUN_TEST(test_strip_strikethrough_unclosed);
+    RUN_TEST(test_strip_strikethrough_mixed);
+
+    // ── Extended inline: ==highlight== ──
+    RUN_TEST(test_strip_highlight);
+    RUN_TEST(test_strip_highlight_unclosed);
+    RUN_TEST(test_strip_highlight_mixed);
+
+    // ── Fenced code blocks ──
+    RUN_TEST(test_parse_code_block_basic);
+    RUN_TEST(test_parse_code_block_with_language_tag);
+    RUN_TEST(test_parse_code_block_preserves_inline_markers);
+    RUN_TEST(test_parse_code_block_blank_line_inside);
+    RUN_TEST(test_parse_code_block_tilde_fence);
+    RUN_TEST(test_parse_code_block_multiple_lines);
+
+    // ── Nested bullets ──
+    RUN_TEST(test_parse_bullet_nested_two_spaces);
+    RUN_TEST(test_parse_bullet_nested_tab);
+    RUN_TEST(test_parse_bullet_nested_star);
+    RUN_TEST(test_parse_bullet_nested_inline_stripped);
+    RUN_TEST(test_parse_bullet_nested_wraps_with_continuation);
+    RUN_TEST(test_parse_bullet_nested_single_space_is_normal);
 
     return UNITY_END();
 }

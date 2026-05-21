@@ -203,6 +203,25 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
         break;
     }
 
+    // ── XJL Extended Markdown types ───────────────────────────────────────────
+
+    case MD_CODE_BLOCK: {
+        // 3 px left bar (thicker than blockquote's 2 px) + 1-char indent
+        _display.fillRect(fb, margin, y, 3, ITEM_H, true);
+        _display.drawText(fb, margin + charAdv + 4, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_BULLET_NESTED: {
+        if (!line.continuation) {
+            // Draw a dash marker at 2-char indent (inset from the outer bullet)
+            _display.drawChar(fb, margin + charAdv * 2, y, '-', false, SCALE);
+        }
+        // Text starts at 4-char indent
+        _display.drawText(fb, margin + charAdv * 4, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
     case MD_BLANK:
     case MD_NORMAL:
     default:
