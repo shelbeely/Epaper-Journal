@@ -10,13 +10,17 @@
 //  ## H2         → underline separator beneath the text
 //  ### H3        → 1-char indent
 //  - / * / + item → bullet list (dash prefix + 2-char indent)
+//    (2+ leading spaces/tab) - / * / +  → nested bullet (4-char indent)
 //  1. item        → ordered list (keeps "N." prefix, continuation indented)
 //  > text         → blockquote (2 px left bar + 1-char indent)
 //  ---  ***  ___  → horizontal rule (3+ identical chars, optional spaces)
+//  ``` … ```      → fenced code block (3 px left bar, lines emitted verbatim)
+//  ~~~ … ~~~      → fenced code block (alternative fence marker)
 //  (blank line)   → empty spacer
 //
 //  Inline stripping (markers removed, inner text kept):
-//    **bold**  *italic*  _italic_  `code`  [text](url)  ![alt](url)
+//    **bold**  *italic*  _italic_  ~~strikethrough~~  ==highlight==
+//    `code`  [text](url)  ![alt](url)
 //
 // ── XJL Bullet Journal extensions ───────────────────────────────────────────
 //  Tasks — use the GitHub-style `- [x]` notation for easy web-editor entry:
@@ -56,6 +60,9 @@ enum MdLineType : uint8_t {
     MD_PRIORITY,        // ! text      → priority signifier
     MD_EVENT,           // @ text      → event signifier
     MD_QUESTION,        // ? text      → question / reflection signifier
+    // ── XJL Extended Markdown additions ──────────────────────────────────────
+    MD_CODE_BLOCK,      // ``` … ``` / ~~~ … ~~~  fenced code block line
+    MD_BULLET_NESTED,   // "  - text"  indented (nested) bullet item
 };
 
 struct MdLine {

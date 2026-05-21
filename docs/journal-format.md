@@ -60,7 +60,55 @@ Rules:
 
 ### Body
 
-Everything after the closing `---` line is the body. Standard Markdown is stored as-is. The firmware does not render Markdown on-device — it displays the raw text — so keeping lines short (≤ 80 characters) and avoiding complex formatting makes entries more readable on the e-paper display.
+Everything after the closing `---` line is the body. The firmware renders Markdown on-device using the **XJL** (Xteink Journal Language) parser. The supported syntax is described below; keeping individual lines short (≤ 80 characters) makes entries more readable on the e-paper display.
+
+#### Standard Markdown subset
+
+| Syntax | Rendering |
+|---|---|
+| `# Heading` | Inverted (white-on-black) full-width bar |
+| `## Heading` | Text with underline separator |
+| `### Heading` | 1-character indent |
+| `- item` / `* item` / `+ item` | Bullet list (dash marker + indent) |
+| `  - item` (2+ spaces or tab) | Nested bullet (deeper indent) |
+| `1. item` | Ordered list (keeps `N.` prefix) |
+| `> text` | Blockquote (2 px left bar) |
+| ` ``` … ``` ` | Fenced code block (3 px left bar, literal content) |
+| `~~~` … `~~~` | Alternative code fence |
+| `---` / `***` / `___` | Horizontal rule |
+| (blank line) | Vertical spacer |
+
+Inline markers are **stripped** (markers removed, text kept):
+
+| Marker | Meaning |
+|---|---|
+| `**text**` | Bold |
+| `*text*` / `_text_` | Italic |
+| `~~text~~` | Strikethrough |
+| `==text==` | Highlight |
+| `` `text` `` | Inline code |
+| `[text](url)` | Link (shows link text) |
+| `![alt](url)` | Image (shows alt text) |
+
+#### XJL Bullet Journal extensions
+
+Tasks use the GitHub-style checkbox notation:
+
+| Syntax | Rendering |
+|---|---|
+| `- [ ] text` | Open task (empty checkbox □) |
+| `- [x] text` | Done task (filled checkbox ■ + strikethrough) |
+| `- [X] text` | Done task (same as `[x]`) |
+| `- [>] text` | Migrated — moved to a future log |
+| `- [<] text` | Scheduled — moved from a future log |
+
+Signifiers mark the type of a line:
+
+| Syntax | Rendering |
+|---|---|
+| `! text` | Priority |
+| `@ text` | Event |
+| `? text` | Question / reflection |
 
 ### Minimal valid entry
 
