@@ -20,6 +20,8 @@
 9. [Contributing](#contributing)
 10. [License](#license)
 
+**Quick links:** [CHANGELOG.md](CHANGELOG.md) · [docs/building.md](docs/building.md) · [docs/journal-format.md](docs/journal-format.md)
+
 ---
 
 ## What is eJournal?
