@@ -63,9 +63,7 @@ jobs:
           echo "GIT_COMMIT=$COMMIT" >> "$GITHUB_ENV"
 
       - name: Build firmware (${{ matrix.env }})
-        run: |
-          pio run -e "${{ matrix.env }}" \
-            --project-option="build_flags=-DFIRMWARE_COMMIT=\"${GIT_COMMIT}\""
+        run: pio run -e "${{ matrix.env }}"
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
