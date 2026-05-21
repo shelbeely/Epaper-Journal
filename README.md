@@ -1,4 +1,4 @@
-# Epaper Journal
+# eJournal
 
 > Offline-first, e-paper journal firmware for the Xteink X4.
 
@@ -9,7 +9,7 @@
 
 ## Table of contents
 
-1. [What is Epaper Journal?](#what-is-epaper-journal)
+1. [What is eJournal?](#what-is-ejournal)
 2. [Hardware target](#hardware-target)
 3. [Getting started](#getting-started)
 4. [Configuration](#configuration)
@@ -22,9 +22,9 @@
 
 ---
 
-## What is Epaper Journal?
+## What is eJournal?
 
-Epaper Journal turns the **Xteink X4** into a private, distraction-free writing device. There is no cloud sync, no account, and no screen that glows at you — just a slow, readable e-ink surface and a journal that lives entirely on the device's SD card.
+eJournal turns the **Xteink X4** into a private, distraction-free writing device. There is no cloud sync, no account, and no screen that glows at you — just a slow, readable e-ink surface and a journal that lives entirely on the device's SD card.
 
 Key capabilities:
 
