@@ -181,17 +181,84 @@ bool OtaManager::isPendingVerify() const {
 
 /*static*/
 bool OtaManager::isNewerVersion(const String& candidate, const String& current) {
-    // Simple semver compare: major.minor.patch — ignores pre-release tags.
-    auto parse = [](const String& v, int& maj, int& min, int& pat) {
-        sscanf(v.c_str(), "%d.%d.%d", &maj, &min, &pat);
+    // Full semver comparison per https://semver.org/
+    // Format: MAJOR.MINOR.PATCH[-PRERELEASE]
+    // Pre-release has LOWER precedence than the release (e.g. 1.0.0-dev < 1.0.0).
+
+    auto parseSemVer = [](const String& v, int& maj, int& min, int& pat, String& pre) {
+        maj = min = pat = 0;
+        pre = "";
+        const char* s = v.c_str();
+        sscanf(s, "%d.%d.%d", &maj, &min, &pat);
+        const char* dash = strchr(s, '-');
+        if (dash) pre = String(dash + 1);
     };
-    int cMaj = 0, cMin = 0, cPat = 0;
-    int nMaj = 0, nMin = 0, nPat = 0;
-    parse(current,   cMaj, cMin, cPat);
-    parse(candidate, nMaj, nMin, nPat);
+
+    // Returns true when every character in s is a decimal digit (s non-empty).
+    auto isNumericId = [](const String& s) -> bool {
+        if (s.isEmpty()) return false;
+        for (size_t i = 0; i < s.length(); ++i) {
+            if (s[i] < '0' || s[i] > '9') return false;
+        }
+        return true;
+    };
+
+    // Compare two pre-release strings per semver §11.
+    // Returns -1 (a < b), 0 (a == b), or +1 (a > b).
+    // An empty string means "no pre-release" and sorts HIGHER than any pre-release.
+    auto comparePreRelease = [&isNumericId](const String& a, const String& b) -> int {
+        if (a == b) return 0;
+        if (a.isEmpty()) return  1;   // release > pre-release
+        if (b.isEmpty()) return -1;   // pre-release < release
+
+        // Both have pre-release — compare dot-separated identifiers left to right.
+        int ai = 0, bi = 0;
+        while (true) {
+            int aDot = a.indexOf('.', ai);
+            int bDot = b.indexOf('.', bi);
+            String aId = (aDot < 0) ? a.substring(ai) : a.substring(ai, aDot);
+            String bId = (bDot < 0) ? b.substring(bi) : b.substring(bi, bDot);
+
+            bool aNum = isNumericId(aId);
+            bool bNum = isNumericId(bId);
+
+            int cmp;
+            if (aNum && bNum) {
+                // Both numeric: compare as integers.
+                int av = atoi(aId.c_str()), bv = atoi(bId.c_str());
+                cmp = (av > bv) ? 1 : (av < bv) ? -1 : 0;
+            } else if (aNum) {
+                cmp = -1;  // numeric identifier has lower precedence than alphanumeric
+            } else if (bNum) {
+                cmp = 1;   // alphanumeric identifier has higher precedence than numeric
+            } else {
+                // Both alphanumeric: compare lexically (ASCII).
+                int r = strcmp(aId.c_str(), bId.c_str());
+                cmp = (r > 0) ? 1 : (r < 0) ? -1 : 0;
+            }
+
+            if (cmp != 0) return cmp;
+
+            // Equal identifier — check field count.
+            bool aEnd = (aDot < 0);
+            bool bEnd = (bDot < 0);
+            if (aEnd && bEnd) return 0;
+            if (aEnd) return -1;  // fewer fields → lower precedence
+            if (bEnd) return  1;  // more fields → higher precedence
+            ai = aDot + 1;
+            bi = bDot + 1;
+        }
+    };
+
+    int cMaj, cMin, cPat, nMaj, nMin, nPat;
+    String cPre, nPre;
+    parseSemVer(current,   cMaj, cMin, cPat, cPre);
+    parseSemVer(candidate, nMaj, nMin, nPat, nPre);
+
     if (nMaj != cMaj) return nMaj > cMaj;
     if (nMin != cMin) return nMin > cMin;
-    return nPat > cPat;
+    if (nPat != cPat) return nPat > cPat;
+    return comparePreRelease(nPre, cPre) > 0;
 }
 
 /*static*/

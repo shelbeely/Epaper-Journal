@@ -57,10 +57,22 @@ jobs:
             ${{ runner.os }}-pio-${{ matrix.env }}-
             ${{ runner.os }}-pio-
 
-      - name: Inject git commit hash into build flags
+      - name: Inject git metadata and version into build flags
         run: |
+          # Always pass the short commit hash to the build.
           COMMIT=$(git rev-parse --short HEAD)
           echo "GIT_COMMIT=$COMMIT" >> "$GITHUB_ENV"
+
+          # If the current commit is tagged with a semver tag (e.g. v1.2.3),
+          # patch platformio.ini so the firmware bakes in that version.
+          SEMVER_TAG=$(git tag --points-at HEAD \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' \
+            | sort -V | tail -1)
+          if [ -n "$SEMVER_TAG" ]; then
+            VERSION="${SEMVER_TAG#v}"
+            echo "Semver tag detected: $SEMVER_TAG → version $VERSION"
+            python3 tools/set_version.py "$VERSION"
+          fi
 
       - name: Build firmware (${{ matrix.env }})
         run: pio run -e "${{ matrix.env }}"
