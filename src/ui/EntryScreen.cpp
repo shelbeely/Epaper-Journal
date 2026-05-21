@@ -11,14 +11,13 @@ EntryScreen::EntryScreen(X4Display& display, X4Input& input,
 
 void EntryScreen::show(const JournalEntry& entry) {
     uint16_t dispW = _display.width();
-    uint16_t dispH = _display.height();
 
     // Characters per line for body text at SCALE
     uint16_t maxChars = (dispW - 8) / (FONT5X7_ADVANCE * SCALE);
 
-    std::vector<String> lines = wrapText(entry.body, maxChars);
+    std::vector<MdLine> lines = MarkdownParser::parse(entry.body, maxChars);
     const int totalLines  = (int)lines.size();
-    const int linesPerPage = (dispH - BODY_Y - 4) / ITEM_H;
+    const int linesPerPage = (_display.height() - BODY_Y - 4) / ITEM_H;
     int topLine = 0;
     bool needRedraw = true;
     bool fullRefreshPending = true;
@@ -62,47 +61,77 @@ void EntryScreen::show(const JournalEntry& entry) {
     }
 }
 
-/*static*/
-std::vector<String> EntryScreen::wrapText(const String& text, uint16_t maxCharsPerLine) {
-    std::vector<String> result;
-    if (maxCharsPerLine == 0) maxCharsPerLine = 1;
+void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
+                               const MdLine& line, uint16_t y) {
+    const uint16_t charAdv = FONT5X7_ADVANCE * SCALE;
+    const uint16_t margin  = 4;
 
-    int len = (int)text.length();
-    int i   = 0;
-    while (i < len) {
-        // Handle explicit newline
-        if (text[i] == '\n') {
-            result.push_back("");
-            i++;
-            continue;
-        }
-        // Build one line up to maxCharsPerLine characters, breaking at word boundaries
-        int lineEnd = i;
-        int lastSpace = -1;
-        while (lineEnd < len && (lineEnd - i) < (int)maxCharsPerLine) {
-            if (text[lineEnd] == '\n') break;
-            if (text[lineEnd] == ' ') lastSpace = lineEnd;
-            lineEnd++;
-        }
-        if (lineEnd >= len || text[lineEnd] == '\n') {
-            // Reached end of text or newline — take everything up to here
-            result.push_back(text.substring(i, lineEnd));
-            if (lineEnd < len && text[lineEnd] == '\n') lineEnd++; // skip the \n
-            i = lineEnd;
-        } else if (lastSpace > i) {
-            // Break at the last space within the line
-            result.push_back(text.substring(i, lastSpace));
-            i = lastSpace + 1; // skip the space
-        } else {
-            // No space found — hard-break at max width
-            result.push_back(text.substring(i, lineEnd));
-            i = lineEnd;
-        }
+    switch (line.type) {
+
+    case MD_H1: {
+        // Inverted: fill the full-width bar black, draw text in white
+        _display.fillRect(fb, 0, y, dispW, ITEM_H, true);
+        _display.drawText(fb, margin, y, line.text.c_str(), /*inverted=*/true, SCALE);
+        break;
     }
-    return result;
+
+    case MD_H2: {
+        _display.drawText(fb, margin, y, line.text.c_str(), false, SCALE);
+        // Underline: 1 px below the glyph body (glyph height = FONT5X7_GLYPH_H * SCALE)
+        uint16_t underY = y + (uint16_t)(FONT5X7_GLYPH_H * SCALE) + 1;
+        _display.fillRect(fb, margin, underY, dispW - margin * 2, 1, true);
+        break;
+    }
+
+    case MD_H3: {
+        // 1-char indent
+        _display.drawText(fb, margin + charAdv, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_BULLET: {
+        if (!line.continuation) {
+            // Draw the bullet dash then the text further right
+            _display.drawChar(fb, margin, y, '-', false, SCALE);
+        }
+        _display.drawText(fb, margin + charAdv * 2, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_ORDERED: {
+        if (!line.continuation) {
+            // First line includes the "N. " prefix — render from left margin
+            _display.drawText(fb, margin, y, line.text.c_str(), false, SCALE);
+        } else {
+            // Continuation: indent by 3 chars (aligns under text after "N. ")
+            _display.drawText(fb, margin + charAdv * 3, y, line.text.c_str(), false, SCALE);
+        }
+        break;
+    }
+
+    case MD_BLOCKQUOTE: {
+        // 2 px left bar
+        _display.fillRect(fb, margin, y, 2, ITEM_H, true);
+        _display.drawText(fb, margin + charAdv + 4, y, line.text.c_str(), false, SCALE);
+        break;
+    }
+
+    case MD_HLINE: {
+        // Centred 2 px horizontal rule
+        uint16_t ruleY = y + ITEM_H / 2 - 1;
+        _display.fillRect(fb, margin, ruleY, dispW - margin * 2, 2, true);
+        break;
+    }
+
+    case MD_BLANK:
+    case MD_NORMAL:
+    default:
+        _display.drawText(fb, margin, y, line.text.c_str(), false, SCALE);
+        break;
+    }
 }
 
-void EntryScreen::_renderPage(const String& title, const std::vector<String>& lines,
+void EntryScreen::_renderPage(const String& title, const std::vector<MdLine>& lines,
                                int topLine, int totalLines) {
     uint8_t* fb    = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
@@ -123,7 +152,7 @@ void EntryScreen::_renderPage(const String& title, const std::vector<String>& li
         int lineIdx = topLine + i;
         if (lineIdx >= (int)lines.size()) break;
         uint16_t lineY = (uint16_t)(BODY_Y + i * ITEM_H);
-        _display.drawText(fb, 4, lineY, lines[lineIdx].c_str(), false, SCALE);
+        _renderLine(fb, dispW, lines[lineIdx], lineY);
     }
 
     // ── Page indicator (bottom-right) ─────────────────────────────────────────

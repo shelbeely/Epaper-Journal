@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // EntryScreen.h — On-device journal entry viewer
 //
-// Displays a JournalEntry with title and word-wrapped body.
+// Displays a JournalEntry with title and Markdown-styled body.
 // Up/Down pages through long entries; Back returns to the caller.
 // Power button triggers the sleep screen.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13,6 +13,7 @@
 #include "../display/X4Display.h"
 #include "../input/X4Input.h"
 #include "SleepScreen.h"
+#include "MarkdownParser.h"
 
 class EntryScreen {
 public:
@@ -31,10 +32,10 @@ private:
     static constexpr uint8_t BODY_Y   = TITLE_H + 4;                 // y where body starts
     static constexpr uint8_t ITEM_H   = FONT5X7_LINE_H * SCALE;      // line height
 
-    // Word-wrap `text` to at most `maxCharsPerLine` characters per line.
-    static std::vector<String> wrapText(const String& text, uint16_t maxCharsPerLine);
-
-    // Render one page of lines starting at `topLine`.
-    void _renderPage(const String& title, const std::vector<String>& lines,
+    // Render one page of Markdown lines starting at `topLine`.
+    void _renderPage(const String& title, const std::vector<MdLine>& lines,
                      int topLine, int totalLines);
+
+    // Draw a single MdLine at pixel row `y`.
+    void _renderLine(uint8_t* fb, uint16_t dispW, const MdLine& line, uint16_t y);
 };
