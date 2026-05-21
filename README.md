@@ -9,6 +9,7 @@ Epaper Journal is PlatformIO/Arduino firmware for the **Xteink X4** that turns t
 - Current release: **v0.1.0**
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Full build and flashing guide: [docs/building.md](docs/building.md)
+- Journal entry format and import guide: [docs/journal-format.md](docs/journal-format.md)
 
 ## What v0.1.0 includes
 
