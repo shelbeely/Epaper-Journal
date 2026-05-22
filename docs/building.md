@@ -40,6 +40,19 @@ build_flags =
   -DWIFI_PASSWORD=\"MyPassword\"
 ```
 
+### On-device Wi-Fi provisioning
+
+`WIFI_PROVISIONING_ENABLED` defaults to `1` in `src/config.h`. On boot, the firmware:
+
+1. Loads Wi-Fi credentials from NVS (`wifi_creds` namespace) if a saved SSID exists.
+2. Falls back to the compile-time `WIFI_SSID` / `WIFI_PASSWORD` values when NVS is empty.
+3. Attempts the STA connection for 10 seconds while the `eJournal` soft-AP remains available.
+
+If the STA connection does not succeed within 10 seconds, browse to
+`http://192.168.4.1/wifi-setup` while connected to the device soft-AP. Submit the form to save
+new credentials into NVS and reboot the device. The saved credentials take priority on all future
+boots until they are replaced by another provisioning flow.
+
 ## Building
 
 ### Development build (all diagnostics on)

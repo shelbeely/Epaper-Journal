@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Wi-Fi provisioning fallback at `http://192.168.4.1/wifi-setup` that stores credentials in NVS and reboots the device.
+
+### Changed
+- Boot Wi-Fi setup now prefers saved NVS credentials over compile-time defaults when available.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

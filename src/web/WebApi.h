@@ -43,6 +43,7 @@ public:
 
     // Start the HTTP server (call after Wi-Fi is up).
     void begin();
+    void setWifiProvisioningMode(bool enabled);
 
     // Push a line into the dev log ring buffer.
     void pushLog(const String& line);
@@ -55,10 +56,12 @@ private:
     JournalManager& _jm;
     VaultManager&  _vault;
     LogRingBuffer  _logs;
+    bool           _wifiProvisioningActive = false;
 
     void _registerDisplayRoutes();
     void _registerJournalRoutes();
     void _registerVaultRoutes();
+    void _registerWifiProvisioningRoutes();
     void _registerExportRoutes();   // /api/export/* + /manifest.json + /sw.js
 
 #if CONFIG_X4_DIAG_HTTP_API

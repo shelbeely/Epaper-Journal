@@ -18,6 +18,7 @@
 #include "system/X4Clock.h"
 #include "journal/JournalManager.h"
 #include "web/WebApi.h"
+#include "wifi/WifiProvisioning.h"
 #include "ui/BrowseScreen.h"
 #include "ui/EntryScreen.h"
 #include "ui/SleepScreen.h"
@@ -47,27 +48,35 @@ static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
 static PinScreen      gPinScreen(gDisplay, gInput);
 
 static bool gSafeModeActive = false;
+static bool gWifiProvisioningActive = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void connectWifi() {
+static bool connectWifi() {
     // Combo mode: soft-AP always on (reachable at 192.168.4.1), STA attempted
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(SOFTAP_SSID, SOFTAP_PASSWORD);
     X4_LOGF(X4M_WIFI_AP_OK, "ssid=%s ip=192.168.4.1", SOFTAP_SSID);
 
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WifiCredentials wifiCreds = WifiProvisioning::loadPreferredCredentials();
+    WiFi.begin(wifiCreds.ssid.c_str(), wifiCreds.password.c_str());
     uint32_t t = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t < 10000) {
         delay(250);
     }
     if (WiFi.status() == WL_CONNECTED) {
         X4_LOG(X4M_WIFI_OK);
-    } else {
-        X4_LOG(X4M_WIFI_FAILED);
+        return false;
     }
+
+    X4_LOG(X4M_WIFI_FAILED);
+#if WIFI_PROVISIONING_ENABLED
+    return true;
+#else
+    return false;
+#endif
 }
 
 // Run all health checks required before marking OTA valid.
@@ -91,7 +100,9 @@ static bool runHealthChecks() {
         ok = false;
     }
     // 4. Wi-Fi connected (STA or AP)
-    if (WiFi.status() != WL_CONNECTED && WiFi.softAPgetStationNum() == 0) {
+    if (WiFi.status() != WL_CONNECTED &&
+        !gWifiProvisioningActive &&
+        WiFi.softAPgetStationNum() == 0) {
         X4_LOGF(X4M_HEALTH_FAILED, "check=wifi");
         ok = false;
     }
@@ -150,7 +161,7 @@ void setup() {
     }
 
     // ── Wi-Fi ─────────────────────────────────────────────────────────────
-    connectWifi();
+    gWifiProvisioningActive = connectWifi();
 
     // ── Clock sync (best-effort; falls back to NVS) ───────────────────────
     if (!gSafeModeActive) {
@@ -158,6 +169,7 @@ void setup() {
     }
 
     // ── HTTP server ───────────────────────────────────────────────────────
+    gWebApi.setWifiProvisioningMode(gWifiProvisioningActive);
     gWebApi.begin();
 
     // ── Health checks + OTA verification ─────────────────────────────────
