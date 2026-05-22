@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Wi-Fi provisioning fallback at `http://192.168.4.1/wifi-setup` that stores credentials in NVS and reboots the device.
+
+### Changed
+- Boot Wi-Fi setup now prefers saved NVS credentials over compile-time defaults when available.
+
 ### Fixed
 - OTA health check now treats an active soft-AP interface as healthy even when no clients are connected, preventing false rollback requests after flashing.
 - Journal entry saves are now atomic: writes go to a sibling `.tmp` file first and are renamed into place only after a successful write.

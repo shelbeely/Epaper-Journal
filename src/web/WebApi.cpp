@@ -8,11 +8,178 @@
 #include "../config.h"
 #include "../journal/JournalManager.h"
 #include "../journal/JournalFrontmatter.h"
+#include "../wifi/WifiProvisioning.h"
 #include "ui_bundle.h"
 #include "mbedtls/sha256.h"
 #include <esp_random.h>
 
 // ── LogRingBuffer ─────────────────────────────────────────────────────────────
+
+static const char WIFI_SETUP_HTML[] PROGMEM = R"html(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wi-Fi setup</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f0e8;
+      color: #2f241d;
+      display: flex;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    main {
+      width: min(100%, 420px);
+      background: #fffdf8;
+      border: 1px solid #d8cfc2;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 12px 32px rgba(47, 36, 29, 0.12);
+    }
+    h1 { margin-top: 0; font-size: 1.8rem; }
+    p { line-height: 1.5; }
+    label { display: block; margin-top: 16px; font-weight: 600; }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #b9ad9e;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+    button {
+      width: 100%;
+      margin-top: 20px;
+      padding: 12px;
+      border: 0;
+      border-radius: 999px;
+      background: #2f241d;
+      color: #fffdf8;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .note { font-size: 0.95rem; color: #5a4a3f; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Set up Wi-Fi</h1>
+    <p>Connect the journal to your local Wi-Fi network. The new credentials are saved on the device and used after reboot.</p>
+    <form method="POST" action="/api/wifi/config">
+      <label for="ssid">Wi-Fi SSID</label>
+      <input id="ssid" name="ssid" maxlength="32" autocomplete="off" required>
+      <label for="password">Wi-Fi password</label>
+      <input id="password" name="password" type="password" maxlength="63" autocomplete="new-password">
+      <button type="submit">Save and reboot</button>
+    </form>
+    <p class="note">If your network is open, leave the password blank.</p>
+  </main>
+</body>
+</html>
+)html";
+
+static const char WIFI_SETUP_CONFIRMATION_HTML[] PROGMEM = R"html(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wi-Fi saved</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #f5f0e8;
+      color: #2f241d;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    main {
+      width: min(100%, 420px);
+      background: #fffdf8;
+      border: 1px solid #d8cfc2;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 12px 32px rgba(47, 36, 29, 0.12);
+    }
+    h1 { margin-top: 0; }
+    p { line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Wi-Fi updated</h1>
+    <p>The new network settings were saved successfully.</p>
+    <p>The journal is rebooting now.</p>
+  </main>
+</body>
+</html>
+)html";
+
+static const char WIFI_SETUP_ERROR_HTML[] PROGMEM = R"html(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wi-Fi setup error</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #f5f0e8;
+      color: #2f241d;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    main {
+      width: min(100%, 420px);
+      background: #fffdf8;
+      border: 1px solid #d8cfc2;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 12px 32px rgba(47, 36, 29, 0.12);
+    }
+    a { color: #2f241d; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Unable to save Wi-Fi settings</h1>
+    <p>Check the network name and try again.</p>
+    <p><a href="/wifi-setup">Return to setup</a></p>
+  </main>
+</body>
+</html>
+)html";
+
+static TaskHandle_t sWifiRebootTask = nullptr;
+
+static void rebootAfterProvisioning(void*) {
+    delay(1500);
+    ESP.restart();
+    vTaskDelete(nullptr);
+}
+
+static void scheduleProvisioningReboot() {
+    if (sWifiRebootTask != nullptr) return;
+    xTaskCreate(rebootAfterProvisioning, "wifi-reboot", 2048, nullptr, 1, &sWifiRebootTask);
+}
 
 String LogRingBuffer::toJson() const {
     JsonDocument doc;
@@ -36,18 +203,34 @@ void WebApi::begin() {
     _registerDisplayRoutes();
     _registerJournalRoutes();
     _registerVaultRoutes();
+    _registerWifiProvisioningRoutes();
     _registerExportRoutes();
 #if CONFIG_X4_DIAG_HTTP_API
     _registerDevRoutes();
 #endif
     // Root — serve the eJournal SPA (gzip-compressed, generated by tools/embed_ui.py)
-    _server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (_wifiProvisioningActive) {
+            req->send(200, "text/html", String(FPSTR(WIFI_SETUP_HTML)));
+            return;
+        }
         AsyncWebServerResponse* resp = req->beginResponse_P(
             200, "text/html", UI_HTML_GZ, UI_HTML_GZ_LEN);
         resp->addHeader("Content-Encoding", "gzip");
         req->send(resp);
     });
+    _server.onNotFound([this](AsyncWebServerRequest* req) {
+        if (_wifiProvisioningActive) {
+            req->redirect("/wifi-setup");
+            return;
+        }
+        req->send(404, "text/plain", "not found");
+    });
     _server.begin();
+}
+
+void WebApi::setWifiProvisioningMode(bool enabled) {
+    _wifiProvisioningActive = enabled;
 }
 
 void WebApi::pushLog(const String& line) {
@@ -435,6 +618,44 @@ void WebApi::_registerVaultRoutes() {
                                  : 500;
             req->send(statusCode, "application/json", body);
         }
+    });
+}
+
+void WebApi::_registerWifiProvisioningRoutes() {
+    _server.on("/wifi-setup", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (!_wifiProvisioningActive) {
+            req->send(404, "text/plain", "not found");
+            return;
+        }
+
+        req->send(200, "text/html", String(FPSTR(WIFI_SETUP_HTML)));
+    });
+
+    _server.on("/api/wifi/config", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_wifiProvisioningActive) {
+            req->send(403, "text/plain", "forbidden");
+            return;
+        }
+
+        if (!req->hasParam("ssid", true) || !req->hasParam("password", true)) {
+            req->send(400, "text/html", String(FPSTR(WIFI_SETUP_ERROR_HTML)));
+            return;
+        }
+
+        String ssid = req->getParam("ssid", true)->value();
+        String password = req->getParam("password", true)->value();
+        if (ssid.isEmpty() || ssid.length() > 32 || password.length() > 63) {
+            req->send(400, "text/html", String(FPSTR(WIFI_SETUP_ERROR_HTML)));
+            return;
+        }
+
+        if (!WifiProvisioning::saveCredentials(ssid, password)) {
+            req->send(500, "text/html", String(FPSTR(WIFI_SETUP_ERROR_HTML)));
+            return;
+        }
+
+        req->send(200, "text/html", String(FPSTR(WIFI_SETUP_CONFIRMATION_HTML)));
+        scheduleProvisioningReboot();
     });
 }
 
