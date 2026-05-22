@@ -43,7 +43,10 @@
 #define SOFTAP_PASSWORD ""              // open AP — gate access via captive portal
 
 // ── OTA manifest endpoint ─────────────────────────────────────────────────────
-#define OTA_MANIFEST_URL "https://updates.example.com/x4/manifest.json"
+#define OTA_MANIFEST_URL_PLACEHOLDER "https://updates.example.com/x4/manifest.json"
+#ifndef OTA_MANIFEST_URL
+  #define OTA_MANIFEST_URL OTA_MANIFEST_URL_PLACEHOLDER
+#endif
 #define OTA_CONNECT_TIMEOUT_MS 10000
 
 // ── Crash-loop detection ──────────────────────────────────────────────────────
