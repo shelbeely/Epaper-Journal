@@ -292,6 +292,7 @@ void test_lockout_window_escalates_to_five_minutes_then_one_hour(void) {
                           (int)vm.lastUnlockResult());
     TEST_ASSERT_EQUAL_UINT32(5, vm.failedUnlockAttempts());
     TEST_ASSERT_EQUAL_UINT32(3600, vm.unlockRetryAfterSeconds());
+}
 
 void test_decrypt_legacy_v1_content_succeeds(void) {
     VaultManager vm;

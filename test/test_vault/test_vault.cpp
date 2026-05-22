@@ -17,7 +17,7 @@
 #include <cstring>
 
 void setUp(void) {
-    Preferences::clear();
+    Preferences::clearStore();
     _stubNonceCounter = 0;
 }
 
@@ -38,6 +38,10 @@ void test_decrypt_with_wrong_key_returns_empty_string(void) {
     VaultManager writer;
     TEST_ASSERT_TRUE(writer.deriveKeyFromPin("1234"));
     const String ciphertext = writer.encrypt("hidden");
+
+    // Clear the NVS store so that reader can set a new PIN verifier
+    // (a second VaultManager can't unlock with a different PIN if a verifier exists)
+    Preferences::clearStore();
 
     VaultManager reader;
     TEST_ASSERT_TRUE(reader.deriveKeyFromPin("9999"));

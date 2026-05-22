@@ -241,6 +241,9 @@ void test_begin_removes_orphaned_tmp_files(void) {
     SDCardManager::_stubReady = true;
     SDCardManager::_stubRemove = true;
 
+    // Set epoch to 2026-05-22 so the cleanup loop reaches this year
+    setTestEpoch(1748563200UL);  // 2026-05-22 00:00:00 UTC
+
     X4Storage storage;
     X4Clock clock;
     uint16_t year; uint8_t month;
@@ -294,6 +297,8 @@ void test_search_entries_matches_title_body_and_is_case_insensitive(void) {
     SDCardManager::_stubReady = true;
     SDCardManager::_stubListFilesByPath.clear();
     SDCardManager::_stubFileContents.clear();
+    // Set epoch to 2026-05-22 so listAllPaths() scans year 2026
+    setTestEpoch(1748563200UL);
     SDCardManager::_stubListFilesByPath["/journal/2026/05/"] = {
         "20260520-103000.md",
         "20260521-103000.md"
@@ -328,6 +333,8 @@ void test_search_entries_only_uses_filename_for_locked_entries(void) {
     SDCardManager::_stubReady = true;
     SDCardManager::_stubListFilesByPath.clear();
     SDCardManager::_stubFileContents.clear();
+    // Set epoch to 2026-05-22 so listAllPaths() scans year 2026
+    setTestEpoch(1748563200UL);
     SDCardManager::_stubListFilesByPath["/journal/2026/05/"] = {
         "20260522-103000.md"
     };

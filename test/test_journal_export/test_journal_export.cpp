@@ -60,12 +60,16 @@ void test_select_export_content_preserves_raw_when_vault_is_locked(void) {
 
 void test_select_export_content_preserves_raw_when_decrypt_fails(void) {
     VaultManager writerVault;
-    VaultManager wrongVault;
     TEST_ASSERT_TRUE(writerVault.deriveKeyFromPin("1234"));
-    TEST_ASSERT_TRUE(wrongVault.deriveKeyFromPin("9999"));
 
     const String plaintext = "---\ntitle: Secret\ndate: 2026-05-22 01:00:00\n---\nBody";
     const String encrypted = writerVault.encrypt(plaintext);
+
+    // Clear NVS so wrongVault can set its own verifier (different PIN won't match existing one)
+    Preferences::clearStore();
+
+    VaultManager wrongVault;
+    TEST_ASSERT_TRUE(wrongVault.deriveKeyFromPin("9999"));
 
     const String result =
         JournalExport::selectExportContent(encrypted, &wrongVault, false);

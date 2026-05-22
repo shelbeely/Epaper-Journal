@@ -15,7 +15,7 @@
 #include <unity.h>
 
 void setUp(void) {
-    Preferences::clear();
+    Preferences::clearStore();
     esp_ota_mock_reset();
 }
 
@@ -49,14 +49,14 @@ void test_is_pending_verify_only_for_pending_verify_state(void) {
     TEST_ASSERT_FALSE(pendingVerify.onBoot());
     TEST_ASSERT_TRUE(pendingVerify.isPendingVerify());
 
-    Preferences::clear();
+    Preferences::clearStore();
     esp_ota_mock_reset();
     esp_ota_mock_set_running_partition_state(ESP_OTA_IMG_VALID);
     OtaManager valid;
     TEST_ASSERT_FALSE(valid.onBoot());
     TEST_ASSERT_FALSE(valid.isPendingVerify());
 
-    Preferences::clear();
+    Preferences::clearStore();
     esp_ota_mock_reset();
     esp_ota_mock_set_running_partition_state(ESP_OTA_IMG_UNDEFINED);
     OtaManager undefined;
