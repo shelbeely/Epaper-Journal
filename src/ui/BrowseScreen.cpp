@@ -26,13 +26,15 @@ BrowseResult BrowseScreen::run(String& outPath) {
     // Build display labels:
     //   item 0 → "[ + NEW ENTRY ]"  (BrowseResult::NEW_ENTRY)
     //   item 1 → "[ STREAK ]"       (BrowseResult::CALENDAR)
-    //   item 2 → vault toggle       (BrowseResult::VAULT_TOGGLE)
-    //   item 3 → wifi toggle        (BrowseResult::WIFI_TOGGLE)
+    //   item 2 → "[ SEARCH ]"       (BrowseResult::SEARCH)
+    //   item 3 → vault toggle       (BrowseResult::VAULT_TOGGLE)
+    //   item 4 → wifi toggle        (BrowseResult::WIFI_TOGGLE)
     //   item 4+ → entry titles      (BrowseResult::OPEN_ENTRY)
     std::vector<String> labels;
     labels.reserve(paths.size() + FIXED_ITEMS);
     labels.push_back("[ + NEW ENTRY ]");
     labels.push_back("[ STREAK ]");
+    labels.push_back("[ SEARCH ]");
     // Vault toggle item (label depends on lock state)
     if (_vault) {
         labels.push_back(_vault->isUnlocked() ? "[ LOCK VAULT ]" : "[ UNLOCK VAULT ]");
@@ -88,6 +90,8 @@ BrowseResult BrowseScreen::run(String& outPath) {
             } else if (selected == 1) {
                 return BrowseResult::CALENDAR;
             } else if (selected == 2) {
+                return BrowseResult::SEARCH;
+            } else if (selected == 3) {
                 return BrowseResult::VAULT_TOGGLE;
             } else if (selected == 3) {
                 return BrowseResult::WIFI_TOGGLE;

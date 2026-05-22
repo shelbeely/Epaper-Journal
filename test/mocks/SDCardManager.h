@@ -8,6 +8,7 @@
 
 #include "Arduino.h"
 #include "SdFat.h"
+#include <map>
 #include <vector>
 #include <string>
 #include <map>
@@ -27,6 +28,7 @@ public:
     static String _stubReadContent;   // return value for readFile()
     static std::vector<String> _stubListFilesDefault;
     static std::map<std::string, std::vector<String>> _stubListFilesByPath;
+    static std::map<std::string, String> _stubFileContents;
     static String _stubLastWritePath;
     static String _stubLastWriteContent;
     static int _stubWriteCallCount;
@@ -45,12 +47,22 @@ public:
         if (it != _stubListFilesByPath.end()) return it->second;
         return _stubListFilesDefault;
     }
-    String readFile(const char* /*path*/) { return _stubReadContent; }
+    String readFile(const char* path) {
+        auto it = _stubFileContents.find(path ? path : "");
+        return (it == _stubFileContents.end()) ? _stubReadContent : it->second;
+    }
     bool   readFileToStream(const char* /*path*/, Print& /*out*/,
                             size_t /*chunkSize*/ = 256) { return false; }
-    size_t readFileToBuffer(const char* /*path*/, char* /*buf*/,
-                            size_t /*bufSize*/, size_t /*maxBytes*/ = 0) {
-        return 0;
+    size_t readFileToBuffer(const char* path, char* buf,
+                            size_t bufSize, size_t maxBytes = 0) {
+        if (!buf || bufSize == 0) return 0;
+        String content = readFile(path);
+        size_t n = content.length();
+        if (maxBytes > 0 && n > maxBytes) n = maxBytes;
+        if (n > bufSize - 1) n = bufSize - 1;
+        if (n > 0) memcpy(buf, content.c_str(), n);
+        buf[n] = '\0';
+        return n;
     }
     bool writeFile(const char* path, const String& content) {
         _stubLastWritePath = String(path);
@@ -111,6 +123,7 @@ inline bool   SDCardManager::_stubRemove       = false;
 inline String SDCardManager::_stubReadContent;
 inline std::vector<String> SDCardManager::_stubListFilesDefault;
 inline std::map<std::string, std::vector<String>> SDCardManager::_stubListFilesByPath;
+inline std::map<std::string, String> SDCardManager::_stubFileContents;
 inline String SDCardManager::_stubLastWritePath;
 inline String SDCardManager::_stubLastWriteContent;
 inline int SDCardManager::_stubWriteCallCount = 0;

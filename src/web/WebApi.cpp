@@ -387,6 +387,44 @@ void WebApi::_registerJournalRoutes() {
         req->send(200, "application/json", out);
     });
 
+    // GET /api/journal/search?q=<keyword>
+    _server.on("/api/journal/search", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (!req->hasParam("q")) {
+            req->send(400, "text/plain", "missing q");
+            return;
+        }
+
+        String query = req->getParam("q")->value();
+        query.trim();
+        if (query.isEmpty()) {
+            req->send(400, "text/plain", "missing q");
+            return;
+        }
+
+        auto paths = _jm.searchEntries(query);
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (const auto& path : paths) {
+            JournalEntry e;
+            bool loaded = _jm.loadEntry(path, e);
+
+            JsonObject obj = arr.add<JsonObject>();
+            obj["path"] = path;
+            if (loaded && !e.locked) {
+                obj["title"] = e.title;
+                obj["date"]  = e.date;
+            } else {
+                String label = JournalManager::labelFromFilename(path);
+                obj["title"] = label;
+                obj["date"]  = label;
+            }
+        }
+
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
     // GET /api/journal/entry?path=<path>
     _server.on("/api/journal/entry", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (rejectWhenWifiDisabled(req)) return;

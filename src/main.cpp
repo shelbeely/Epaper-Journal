@@ -25,6 +25,7 @@
 #include "ui/EntryScreen.h"
 #include "ui/SleepScreen.h"
 #include "ui/CalendarScreen.h"
+#include "ui/SearchScreen.h"
 #include "ui/PinScreen.h"
 #include "ui/TitlePromptScreen.h"
 #include "vault/VaultManager.h"
@@ -48,6 +49,7 @@ static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock,
                                gSleepScreen, &gVault);
 static EntryScreen    gEntryScreen(gDisplay, gInput, gSleepScreen);
 static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
+static SearchScreen   gSearchScreen(gJournalMgr, gDisplay, gInput, gSleepScreen);
 static PinScreen      gPinScreen(gDisplay, gInput);
 
 static bool gSafeModeActive = false;
@@ -265,6 +267,14 @@ void loop() {
         }
     } else if (result == BrowseResult::CALENDAR) {
         gCalendar.run();
+    } else if (result == BrowseResult::SEARCH) {
+        String path = gSearchScreen.run();
+        if (!path.isEmpty()) {
+            JournalEntry e;
+            if (gJournalMgr.loadEntry(path, e)) {
+                gEntryScreen.show(e);
+            }
+        }
     } else if (result == BrowseResult::VAULT_TOGGLE) {
         if (gVault.isUnlocked()) {
             gVault.lock();

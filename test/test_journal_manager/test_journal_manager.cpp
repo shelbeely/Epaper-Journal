@@ -278,6 +278,86 @@ void test_load_entry_migrates_legacy_vault_to_v2(void) {
     TEST_ASSERT_TRUE(SDCardManager::_stubLastWriteContent.startsWith(VaultManager::VAULT_HEADER_V2));
 }
 
+void test_search_entries_matches_title_body_and_is_case_insensitive(void) {
+    SDCardManager::_stubReady = true;
+    SDCardManager::_stubListFilesByPath.clear();
+    SDCardManager::_stubFileContents.clear();
+    SDCardManager::_stubListFilesByPath["/journal/2026/05/"] = {
+        "20260520-103000.md",
+        "20260521-103000.md"
+    };
+    SDCardManager::_stubFileContents["/journal/2026/05/20260520-103000.md"] =
+        "---\n"
+        "title: Grocery List\n"
+        "date: 2026-05-20 10:30:00\n"
+        "---\n"
+        "Need to buy Milk and bread.\n";
+    SDCardManager::_stubFileContents["/journal/2026/05/20260521-103000.md"] =
+        "---\n"
+        "title: Workout\n"
+        "date: 2026-05-21 10:30:00\n"
+        "---\n"
+        "Morning run.\n";
+
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+
+    auto matches = jm.searchEntries("mIlK");
+    TEST_ASSERT_EQUAL(1, (int)matches.size());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260520-103000.md", matches[0].c_str());
+
+    SDCardManager::_stubReady = false;
+    SDCardManager::_stubListFilesByPath.clear();
+    SDCardManager::_stubFileContents.clear();
+}
+
+void test_search_entries_only_uses_filename_for_locked_entries(void) {
+    SDCardManager::_stubReady = true;
+    SDCardManager::_stubListFilesByPath.clear();
+    SDCardManager::_stubFileContents.clear();
+    SDCardManager::_stubListFilesByPath["/journal/2026/05/"] = {
+        "20260522-103000.md"
+    };
+
+    VaultManager vault;
+    TEST_ASSERT_TRUE(vault.deriveKeyFromPin("1234"));
+    String encrypted = vault.encrypt(
+        "---\n"
+        "title: Hidden Secret\n"
+        "date: 2026-05-22 10:30:00\n"
+        "---\n"
+        "vault-only keyword\n");
+    vault.lock();
+
+    SDCardManager::_stubFileContents["/journal/2026/05/20260522-103000.md"] = encrypted;
+
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, &vault);
+
+    auto secretMatches = jm.searchEntries("keyword");
+    TEST_ASSERT_EQUAL(0, (int)secretMatches.size());
+
+    auto dateMatches = jm.searchEntries("2026-05-22");
+    TEST_ASSERT_EQUAL(1, (int)dateMatches.size());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260522-103000.md", dateMatches[0].c_str());
+
+    SDCardManager::_stubReady = false;
+    SDCardManager::_stubListFilesByPath.clear();
+    SDCardManager::_stubFileContents.clear();
+}
+
+void test_search_entries_returns_empty_for_blank_query(void) {
+    SDCardManager::_stubReady = true;
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+    auto matches = jm.searchEntries("   ");
+    TEST_ASSERT_EQUAL(0, (int)matches.size());
+    SDCardManager::_stubReady = false;
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -297,6 +377,9 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_save_entry_cleans_tmp_when_rename_fails);
     RUN_TEST(test_begin_removes_orphaned_tmp_files);
     RUN_TEST(test_load_entry_migrates_legacy_vault_to_v2);
+    RUN_TEST(test_search_entries_matches_title_body_and_is_case_insensitive);
+    RUN_TEST(test_search_entries_only_uses_filename_for_locked_entries);
+    RUN_TEST(test_search_entries_returns_empty_for_blank_query);
 
     return UNITY_END();
 }
