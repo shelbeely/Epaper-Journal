@@ -80,15 +80,36 @@ Everything after the closing `---` line is the body. The firmware renders Markdo
 
 Inline markers are **stripped** (markers removed, text kept):
 
-| Marker | Meaning |
-|---|---|
-| `**text**` | Bold |
-| `*text*` / `_text_` | Italic |
-| `~~text~~` | Strikethrough |
-| `==text==` | Highlight |
-| `` `text` `` | Inline code |
-| `[text](url)` | Link (shows link text) |
-| `![alt](url)` | Image (shows alt text) |
+| Marker | Meaning | Rendering hint |
+|---|---|---|
+| `**text**` | Bold | Whole line renders faux-bold |
+| `*text*` / `_text_` | Italic | Stripped (no font variant available) |
+| `~~text~~` | Strikethrough | Stripped |
+| `==text==` | Highlight | Stripped |
+| `` `text` `` | Inline code | Whole line rendered with border box |
+| `[text](url)` | Link (shows link text) | Stripped to text |
+| `![alt](url)` | Image (shows alt text) | Stripped to alt |
+
+> **Note on inline formatting:** The display uses fixed-pitch bitmap fonts with no italic or colour support. Bold and inline-code formatting are rendered as whole-line hints (faux-bold double-draw for `**bold**`; 1 px border box for `` `code` ``).
+
+#### GFM-style tables
+
+Pipe-separated tables use the standard GitHub Flavored Markdown table syntax:
+
+```markdown
+| Column 1 | Column 2 | Column 3 |
+|----------|----------|----------|
+| Cell A   | Cell B   | Cell C   |
+| Cell D   | Cell E   | Cell F   |
+```
+
+- The first `|`-prefixed row is the header (rendered inverted, white text on black).
+- The `|---|---|` separator row draws a horizontal divider.
+- All subsequent `|`-prefixed rows are data rows.
+- Inline markers inside cells are stripped (e.g. `**bold**` → `bold`).
+- **Display limits:** at scale 2 in portrait mode (~30 chars wide), 2–4 columns fit comfortably. Five or more columns will truncate cell text.
+
+A blank line or any non-`|` line ends the table.
 
 #### XJL Bullet Journal extensions
 
@@ -109,6 +130,51 @@ Signifiers mark the type of a line:
 | `! text` | Priority |
 | `@ text` | Event |
 | `? text` | Question / reflection |
+
+#### XJL callout blocks
+
+Callouts extend blockquote syntax with a `[!TYPE]` prefix:
+
+```markdown
+> [!NOTE] This is a general note.
+> [!TIP] A helpful tip goes here.
+> [!WARNING] Something to watch out for.
+> [!IMPORTANT] This must not be missed.
+```
+
+Supported types: `NOTE`, `TIP`, `WARNING`, `IMPORTANT` (case-insensitive). Each renders with a 3 px left bar and a small inverted label badge. Unknown types fall back to a regular blockquote.
+
+#### XJL definition lists
+
+A line immediately followed by a `: definition` line becomes a definition list term:
+
+```markdown
+Term
+: The definition of the term goes here.
+
+Another term
+: Its definition.
+```
+
+- The term line renders faux-bold.
+- The definition line is indented with a 2 px left bar.
+- A blank line separates definition list entries.
+- Lines starting with `:` but not followed by a space (e.g. ``:nodef``) are treated as normal text.
+
+#### XJL habit / data grid
+
+A compact grid for habit tracking or similar binary data:
+
+```markdown
+::grid Habit | Mon | Tue | Wed | Thu | Fri
+Sleep        | x   | x   | .   | x   | x
+Water        | .   | x   | x   | x   | .
+```
+
+- `::grid` starts the grid and sets the header row with column labels.
+- Data rows start with a label and use `|` to separate values.
+- In a data cell, `x` or `X` or `1` renders as a **filled box** (■); `.` or `0` or an empty cell renders as an **empty box** (□); any other value is shown as truncated text.
+- A blank line or a line without `|` ends the grid block.
 
 ### Minimal valid entry
 

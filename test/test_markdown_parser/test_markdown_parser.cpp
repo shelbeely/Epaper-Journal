@@ -547,6 +547,298 @@ void test_parse_bullet_nested_single_space_is_normal(void) {
     TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
 }
 
+// ── GFM tables ────────────────────────────────────────────────────────────────
+
+void test_parse_table_header_row(void) {
+    auto lines = MarkdownParser::parse("| H1 | H2 |", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(2, (int)lines[0].cells.size());
+    TEST_ASSERT_EQUAL_STRING("H1", lines[0].cells[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("H2", lines[0].cells[1].c_str());
+    TEST_ASSERT_FALSE(lines[0].continuation);
+}
+
+void test_parse_table_sep_row(void) {
+    auto lines = MarkdownParser::parse("| H1 | H2 |\n|---|---|", 40);
+    TEST_ASSERT_EQUAL(2, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(MD_TABLE_SEP,    lines[1].type);
+    TEST_ASSERT_TRUE(lines[1].cells.empty());
+}
+
+void test_parse_table_data_row(void) {
+    auto lines = MarkdownParser::parse("| H1 | H2 |\n|---|---|\n| D1 | D2 |", 40);
+    TEST_ASSERT_EQUAL(3, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(MD_TABLE_SEP,    lines[1].type);
+    TEST_ASSERT_EQUAL(MD_TABLE_ROW,    lines[2].type);
+    TEST_ASSERT_EQUAL(2, (int)lines[2].cells.size());
+    TEST_ASSERT_EQUAL_STRING("D1", lines[2].cells[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("D2", lines[2].cells[1].c_str());
+}
+
+void test_parse_table_inline_stripped_in_cells(void) {
+    // Bold markers inside cell text are stripped
+    auto lines = MarkdownParser::parse("| **bold** | text |", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(2, (int)lines[0].cells.size());
+    TEST_ASSERT_EQUAL_STRING("bold", lines[0].cells[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("text", lines[0].cells[1].c_str());
+}
+
+void test_parse_table_sep_only_has_empty_cells(void) {
+    auto lines = MarkdownParser::parse("| H |\n|---|", 40);
+    TEST_ASSERT_EQUAL(2, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_SEP, lines[1].type);
+    TEST_ASSERT_TRUE(lines[1].cells.empty());
+}
+
+void test_parse_table_resets_after_blank_line(void) {
+    // After a blank line, the next | row starts a new table (MD_TABLE_HEADER)
+    auto lines = MarkdownParser::parse("| H1 |\n|---|\n| D1 |\n\n| New |", 40);
+    // Find the second MD_TABLE_HEADER
+    int headerCount = 0;
+    for (auto& l : lines) {
+        if (l.type == MD_TABLE_HEADER) headerCount++;
+    }
+    TEST_ASSERT_EQUAL(2, headerCount);
+}
+
+void test_parse_table_no_separator_second_row_is_data(void) {
+    // Without a separator row, second | line becomes MD_TABLE_ROW
+    auto lines = MarkdownParser::parse("| H |\n| D |", 40);
+    TEST_ASSERT_EQUAL(2, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(MD_TABLE_ROW,    lines[1].type);
+}
+
+void test_parse_table_three_columns(void) {
+    auto lines = MarkdownParser::parse("| A | B | C |", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TABLE_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(3, (int)lines[0].cells.size());
+    TEST_ASSERT_EQUAL_STRING("A", lines[0].cells[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("B", lines[0].cells[1].c_str());
+    TEST_ASSERT_EQUAL_STRING("C", lines[0].cells[2].c_str());
+}
+
+// ── Bold / inlineCode flags ───────────────────────────────────────────────────
+
+void test_parse_bold_flag_set_when_bold_markers_present(void) {
+    auto lines = MarkdownParser::parse("**bold text**", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_TRUE(lines[0].bold);
+    TEST_ASSERT_EQUAL_STRING("bold text", lines[0].text.c_str());
+}
+
+void test_parse_bold_flag_set_for_partial_bold(void) {
+    // If any ** pair exists, the whole line gets bold=true
+    auto lines = MarkdownParser::parse("some **bold** words", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_TRUE(lines[0].bold);
+    TEST_ASSERT_EQUAL_STRING("some bold words", lines[0].text.c_str());
+}
+
+void test_parse_bold_flag_not_set_for_unclosed_markers(void) {
+    // Only one ** (no closing pair) → bold=false
+    auto lines = MarkdownParser::parse("**unclosed", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_FALSE(lines[0].bold);
+}
+
+void test_parse_bold_flag_not_set_for_normal_text(void) {
+    auto lines = MarkdownParser::parse("plain text", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_FALSE(lines[0].bold);
+}
+
+void test_parse_bold_in_heading(void) {
+    auto lines = MarkdownParser::parse("# **bold title**", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_H1, lines[0].type);
+    TEST_ASSERT_TRUE(lines[0].bold);
+    TEST_ASSERT_EQUAL_STRING("bold title", lines[0].text.c_str());
+}
+
+void test_parse_bold_in_task(void) {
+    auto lines = MarkdownParser::parse("- [ ] **important** task", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_TASK_OPEN, lines[0].type);
+    TEST_ASSERT_TRUE(lines[0].bold);
+    TEST_ASSERT_EQUAL_STRING("important task", lines[0].text.c_str());
+}
+
+void test_parse_inlinecode_flag_set_for_backtick_pair(void) {
+    auto lines = MarkdownParser::parse("`code`", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_TRUE(lines[0].inlineCode);
+    TEST_ASSERT_EQUAL_STRING("code", lines[0].text.c_str());
+}
+
+void test_parse_inlinecode_flag_not_set_for_single_backtick(void) {
+    // A lone backtick (no closing) → inlineCode=false
+    auto lines = MarkdownParser::parse("just a ` backtick", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_FALSE(lines[0].inlineCode);
+}
+
+void test_parse_bold_false_for_code_block_content(void) {
+    // Content inside a code fence should NOT get bold flag even if it has **
+    auto lines = MarkdownParser::parse("```\n**not bold**\n```", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CODE_BLOCK, lines[0].type);
+    TEST_ASSERT_FALSE(lines[0].bold);
+    TEST_ASSERT_EQUAL_STRING("**not bold**", lines[0].text.c_str());
+}
+
+// ── Callout blocks ────────────────────────────────────────────────────────────
+
+void test_parse_callout_note(void) {
+    auto lines = MarkdownParser::parse("> [!NOTE] a note", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CALLOUT_NOTE, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("a note", lines[0].text.c_str());
+    TEST_ASSERT_FALSE(lines[0].continuation);
+}
+
+void test_parse_callout_tip(void) {
+    auto lines = MarkdownParser::parse("> [!TIP] a tip", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CALLOUT_TIP, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("a tip", lines[0].text.c_str());
+}
+
+void test_parse_callout_warning(void) {
+    auto lines = MarkdownParser::parse("> [!WARNING] be careful", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CALLOUT_WARNING, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("be careful", lines[0].text.c_str());
+}
+
+void test_parse_callout_important(void) {
+    auto lines = MarkdownParser::parse("> [!IMPORTANT] read this", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CALLOUT_IMPORTANT, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("read this", lines[0].text.c_str());
+}
+
+void test_parse_callout_unknown_type_falls_to_blockquote(void) {
+    // Unknown tag → regular blockquote
+    auto lines = MarkdownParser::parse("> [!UNKNOWN] text", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_BLOCKQUOTE, lines[0].type);
+}
+
+void test_parse_callout_case_insensitive(void) {
+    // Lowercase tag is accepted
+    auto lines = MarkdownParser::parse("> [!note] lower", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CALLOUT_NOTE, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("lower", lines[0].text.c_str());
+}
+
+void test_parse_callout_empty_content(void) {
+    auto lines = MarkdownParser::parse("> [!TIP]", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_CALLOUT_TIP, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("", lines[0].text.c_str());
+}
+
+// ── Definition lists ──────────────────────────────────────────────────────────
+
+void test_parse_deflist_def_standalone(void) {
+    // A ": Definition" line alone becomes MD_DEFLIST_DEF
+    auto lines = MarkdownParser::parse(": a definition", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_DEFLIST_DEF, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("a definition", lines[0].text.c_str());
+}
+
+void test_parse_deflist_term_promoted(void) {
+    // A normal line immediately before ": def" is promoted to MD_DEFLIST_TERM
+    auto lines = MarkdownParser::parse("Term\n: Definition text", 40);
+    TEST_ASSERT_EQUAL(2, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_DEFLIST_TERM, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("Term", lines[0].text.c_str());
+    TEST_ASSERT_TRUE(lines[0].bold); // terms are always bold
+    TEST_ASSERT_EQUAL(MD_DEFLIST_DEF, lines[1].type);
+    TEST_ASSERT_EQUAL_STRING("Definition text", lines[1].text.c_str());
+}
+
+void test_parse_deflist_normal_not_promoted_without_def(void) {
+    // A normal line NOT followed by ": " remains MD_NORMAL
+    auto lines = MarkdownParser::parse("Just text\nMore text", 40);
+    TEST_ASSERT_EQUAL(2, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[1].type);
+}
+
+void test_parse_deflist_colon_without_space_is_normal(void) {
+    // ":text" (no space) is treated as normal text, not a definition
+    auto lines = MarkdownParser::parse(":nodef", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
+// ── Habit / data grid ─────────────────────────────────────────────────────────
+
+void test_parse_grid_header(void) {
+    auto lines = MarkdownParser::parse("::grid Habit | Mon | Tue | Wed", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_GRID_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(4, (int)lines[0].cells.size());
+    TEST_ASSERT_EQUAL_STRING("Habit", lines[0].cells[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("Mon",   lines[0].cells[1].c_str());
+    TEST_ASSERT_EQUAL_STRING("Tue",   lines[0].cells[2].c_str());
+    TEST_ASSERT_EQUAL_STRING("Wed",   lines[0].cells[3].c_str());
+}
+
+void test_parse_grid_row_after_header(void) {
+    auto lines = MarkdownParser::parse("::grid H | A | B\nSleep | x | .", 40);
+    TEST_ASSERT_EQUAL(2, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_GRID_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(MD_GRID_ROW,    lines[1].type);
+    TEST_ASSERT_EQUAL(3, (int)lines[1].cells.size());
+    TEST_ASSERT_EQUAL_STRING("Sleep", lines[1].cells[0].c_str());
+    TEST_ASSERT_EQUAL_STRING("x",     lines[1].cells[1].c_str());
+    TEST_ASSERT_EQUAL_STRING(".",     lines[1].cells[2].c_str());
+}
+
+void test_parse_grid_exits_on_blank_line(void) {
+    // After a blank line, following lines are NOT grid rows
+    auto lines = MarkdownParser::parse("::grid H | A\nRow | x\n\nPlain text", 40);
+    // Find types in order
+    bool foundGridHeader = false;
+    bool foundGridRow    = false;
+    bool foundNormal     = false;
+    for (auto& l : lines) {
+        if (l.type == MD_GRID_HEADER) foundGridHeader = true;
+        if (l.type == MD_GRID_ROW)    foundGridRow    = true;
+        if (l.type == MD_NORMAL)      foundNormal     = true;
+    }
+    TEST_ASSERT_TRUE(foundGridHeader);
+    TEST_ASSERT_TRUE(foundGridRow);
+    TEST_ASSERT_TRUE(foundNormal);
+}
+
+void test_parse_grid_non_pipe_line_exits_grid(void) {
+    // A line without | after grid header exits grid mode
+    auto lines = MarkdownParser::parse("::grid H | A\nRow | x\nNoPipe", 40);
+    // The last line should NOT be MD_GRID_ROW
+    TEST_ASSERT_GREATER_OR_EQUAL(3, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[2].type);
+}
+
+void test_parse_grid_multiple_rows(void) {
+    auto lines = MarkdownParser::parse("::grid Habit | Mon | Tue\nSleep | x | .\nWater | . | x", 40);
+    TEST_ASSERT_EQUAL(3, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_GRID_HEADER, lines[0].type);
+    TEST_ASSERT_EQUAL(MD_GRID_ROW,    lines[1].type);
+    TEST_ASSERT_EQUAL(MD_GRID_ROW,    lines[2].type);
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -642,6 +934,49 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_parse_bullet_nested_inline_stripped);
     RUN_TEST(test_parse_bullet_nested_wraps_with_continuation);
     RUN_TEST(test_parse_bullet_nested_single_space_is_normal);
+
+    // ── GFM tables ──
+    RUN_TEST(test_parse_table_header_row);
+    RUN_TEST(test_parse_table_sep_row);
+    RUN_TEST(test_parse_table_data_row);
+    RUN_TEST(test_parse_table_inline_stripped_in_cells);
+    RUN_TEST(test_parse_table_sep_only_has_empty_cells);
+    RUN_TEST(test_parse_table_resets_after_blank_line);
+    RUN_TEST(test_parse_table_no_separator_second_row_is_data);
+    RUN_TEST(test_parse_table_three_columns);
+
+    // ── Bold / inlineCode flags ──
+    RUN_TEST(test_parse_bold_flag_set_when_bold_markers_present);
+    RUN_TEST(test_parse_bold_flag_set_for_partial_bold);
+    RUN_TEST(test_parse_bold_flag_not_set_for_unclosed_markers);
+    RUN_TEST(test_parse_bold_flag_not_set_for_normal_text);
+    RUN_TEST(test_parse_bold_in_heading);
+    RUN_TEST(test_parse_bold_in_task);
+    RUN_TEST(test_parse_inlinecode_flag_set_for_backtick_pair);
+    RUN_TEST(test_parse_inlinecode_flag_not_set_for_single_backtick);
+    RUN_TEST(test_parse_bold_false_for_code_block_content);
+
+    // ── Callout blocks ──
+    RUN_TEST(test_parse_callout_note);
+    RUN_TEST(test_parse_callout_tip);
+    RUN_TEST(test_parse_callout_warning);
+    RUN_TEST(test_parse_callout_important);
+    RUN_TEST(test_parse_callout_unknown_type_falls_to_blockquote);
+    RUN_TEST(test_parse_callout_case_insensitive);
+    RUN_TEST(test_parse_callout_empty_content);
+
+    // ── Definition lists ──
+    RUN_TEST(test_parse_deflist_def_standalone);
+    RUN_TEST(test_parse_deflist_term_promoted);
+    RUN_TEST(test_parse_deflist_normal_not_promoted_without_def);
+    RUN_TEST(test_parse_deflist_colon_without_space_is_normal);
+
+    // ── Habit / data grid ──
+    RUN_TEST(test_parse_grid_header);
+    RUN_TEST(test_parse_grid_row_after_header);
+    RUN_TEST(test_parse_grid_exits_on_blank_line);
+    RUN_TEST(test_parse_grid_non_pipe_line_exits_grid);
+    RUN_TEST(test_parse_grid_multiple_rows);
 
     return UNITY_END();
 }
