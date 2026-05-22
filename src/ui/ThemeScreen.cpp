@@ -263,7 +263,7 @@ void ThemeScreen::_render(const ThemeScreenData& data, int noteTop, int ratingWe
         uint16_t maxW = (tagX > textX + 6) ? (uint16_t)(tagX - textX - 6) : 40;
         uint16_t maxChars = (uint16_t)(maxW / _display.charAdvance(BODY_SCALE));
         auto lines = _wrapWords(n.text, maxChars, 2);
-        for (uint8_t li = 0; li < lines.size(); li++) {
+        for (size_t li = 0; li < lines.size(); li++) {
             _display.drawText(fb, textX, y + 2 + li * _display.lineHeight(BODY_SCALE),
                               lines[li].c_str(), false, BODY_SCALE);
         }
