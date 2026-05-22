@@ -22,6 +22,17 @@
 //    **bold**  *italic*  _italic_  ~~strikethrough~~  ==highlight==
 //    `code`  [text](url)  ![alt](url)
 //
+//  Inline flags (set on the whole line, drive rendering hints):
+//    **...**  → MdLine.bold = true   (faux-bold double-draw in renderer)
+//    `...`    → MdLine.inlineCode = true  (border box around text)
+//
+// ── GFM-style tables ────────────────────────────────────────────────────────
+//  | H1 | H2 |   → MD_TABLE_HEADER  (cells stored in MdLine.cells)
+//  |----|----|   → MD_TABLE_SEP     (horizontal divider)
+//  | D1 | D2 |   → MD_TABLE_ROW    (cells stored in MdLine.cells)
+//
+//  Practical display limits: 2–4 columns at scale 2 (portrait ~30 chars wide).
+//
 // ── XJL Bullet Journal extensions ───────────────────────────────────────────
 //  Tasks — use the GitHub-style `- [x]` notation for easy web-editor entry:
 //    - [ ] text  → open task     (empty checkbox □)
@@ -37,6 +48,22 @@
 //
 //  Marker zone: all task/signifier types reserve 2 char-widths (24 px at
 //  scale 2) for the marker; text starts after that zone.
+//
+// ── XJL additional extensions ───────────────────────────────────────────────
+//  Callout blocks (inside blockquote):
+//    > [!NOTE] text      → highlighted note callout
+//    > [!TIP] text       → tip callout
+//    > [!WARNING] text   → warning callout
+//    > [!IMPORTANT] text → important callout
+//
+//  Definition lists:
+//    Term            → MD_DEFLIST_TERM  (faux-bold; detected via post-processing)
+//    : Definition    → MD_DEFLIST_DEF   (indented, left bar)
+//
+//  Habit / data grid:
+//    ::grid Label | Col1 | Col2   → MD_GRID_HEADER (first row)
+//    Row label    | x    | .      → MD_GRID_ROW (x=filled, .=empty box)
+//    (blank line or non-pipe exits grid mode)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <Arduino.h>
@@ -63,13 +90,31 @@ enum MdLineType : uint8_t {
     // ── XJL Extended Markdown additions ──────────────────────────────────────
     MD_CODE_BLOCK,      // ``` … ``` / ~~~ … ~~~  fenced code block line
     MD_BULLET_NESTED,   // "  - text"  indented (nested) bullet item
+    // ── GFM-style tables ─────────────────────────────────────────────────────
+    MD_TABLE_HEADER,    // | H1 | H2 |  first row (inverted background)
+    MD_TABLE_SEP,       // |----|----|  horizontal separator
+    MD_TABLE_ROW,       // | D1 | D2 |  data row
+    // ── XJL callout blocks ────────────────────────────────────────────────────
+    MD_CALLOUT_NOTE,      // > [!NOTE] text
+    MD_CALLOUT_TIP,       // > [!TIP] text
+    MD_CALLOUT_WARNING,   // > [!WARNING] text
+    MD_CALLOUT_IMPORTANT, // > [!IMPORTANT] text
+    // ── XJL definition lists ─────────────────────────────────────────────────
+    MD_DEFLIST_TERM,    // Term   (set by post-processing when followed by MD_DEFLIST_DEF)
+    MD_DEFLIST_DEF,     // : Definition text
+    // ── XJL habit / data grid ────────────────────────────────────────────────
+    MD_GRID_HEADER,     // ::grid Label | Col1 | Col2 ...
+    MD_GRID_ROW,        // Row label | x | . | x  (x=filled, .=empty cell)
 };
 
 struct MdLine {
-    MdLineType type;
+    MdLineType type         = MD_NORMAL;
     String     text;
     bool       continuation = false; // true = wrapped continuation of the same block
     bool       strikethrough = false; // true = draw strikethrough (MD_TASK_DONE)
+    bool       bold         = false; // true = faux-bold rendering (whole line)
+    bool       inlineCode   = false; // true = render with code-border box (whole line)
+    std::vector<String> cells;       // table / grid cell contents (empty for non-table lines)
 };
 
 class MarkdownParser {
@@ -91,11 +136,21 @@ private:
     // `text` must already be inline-stripped.
     // `firstMaxChars` is the char budget for the first wrapped line;
     // `contMaxChars` is the budget for all subsequent continuation lines.
+    // `bold` / `inlineCode` are propagated to every appended line.
     static void _wrapAppend(std::vector<MdLine>& out,
                             MdLineType type,
                             const String& text,
                             uint16_t firstMaxChars,
-                            uint16_t contMaxChars);
+                            uint16_t contMaxChars,
+                            bool bold = false,
+                            bool inlineCode = false);
+
+    // True if `raw` looks like a GFM table separator row (only |, -, :, spaces).
+    static bool _isTableSep(const String& raw);
+
+    // Split a GFM table / grid row into trimmed, inline-stripped cell strings.
+    // Handles optional leading/trailing '|'.
+    static std::vector<String> _splitCells(const String& row);
 
     // True if `line` (trimmed) looks like a horizontal rule:
     // 3+ identical characters from { '-', '*', '_' } optionally separated by spaces.

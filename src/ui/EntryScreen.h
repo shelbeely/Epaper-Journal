@@ -39,4 +39,10 @@ private:
 
     // Draw a single MdLine at pixel row `y`.
     void _renderLine(uint8_t* fb, uint16_t dispW, const MdLine& line, uint16_t y);
+
+    // Wrapper around _display.drawText that applies faux-bold (double-draw at
+    // x+1) and inline-code border box based on flags in `line`.
+    void _drawLineText(uint8_t* fb, uint16_t x, uint16_t y,
+                       const char* str, bool inverted, uint8_t scale,
+                       const MdLine& line);
 };

@@ -137,13 +137,53 @@ bool MarkdownParser::_isHRule(const String& trimmed) {
     return count >= 3;
 }
 
+// ── _isTableSep ───────────────────────────────────────────────────────────────
+
+bool MarkdownParser::_isTableSep(const String& raw) {
+    // Must start with '|' and contain only |, -, :, and spaces with at least one '-'
+    if (raw.length() == 0 || raw[0] != '|') return false;
+    bool hasDash = false;
+    for (int i = 0; i < (int)raw.length(); i++) {
+        char c = raw[i];
+        if (c == '|' || c == ' ' || c == ':') continue;
+        if (c == '-') { hasDash = true; continue; }
+        return false; // unexpected character → not a separator
+    }
+    return hasDash;
+}
+
+// ── _splitCells ───────────────────────────────────────────────────────────────
+
+std::vector<String> MarkdownParser::_splitCells(const String& row) {
+    std::vector<String> cells;
+    String s = row;
+    s.trim();
+    // Strip optional leading/trailing '|'
+    if (s.length() > 0 && s[0] == '|') s = s.substring(1);
+    if (s.length() > 0 && s[s.length() - 1] == '|') s = s.substring(0, s.length() - 1);
+
+    int start = 0;
+    int slen  = (int)s.length();
+    for (int i = 0; i <= slen; i++) {
+        if (i == slen || s[i] == '|') {
+            String cell = s.substring(start, i);
+            cell.trim();
+            cells.push_back(stripInline(cell));
+            start = i + 1;
+        }
+    }
+    return cells;
+}
+
 // ── _wrapAppend ───────────────────────────────────────────────────────────────
 
 void MarkdownParser::_wrapAppend(std::vector<MdLine>& out,
                                   MdLineType type,
                                   const String& text,
                                   uint16_t firstMaxChars,
-                                  uint16_t contMaxChars) {
+                                  uint16_t contMaxChars,
+                                  bool bold,
+                                  bool inlineCode) {
     if (firstMaxChars == 0) firstMaxChars = 1;
     if (contMaxChars  == 0) contMaxChars  = 1;
 
@@ -190,6 +230,8 @@ void MarkdownParser::_wrapAppend(std::vector<MdLine>& out,
         ml.type         = type;
         ml.text         = lineText;
         ml.continuation = !firstLine;
+        ml.bold         = bold;
+        ml.inlineCode   = inlineCode;
         out.push_back(ml);
         firstLine = false;
     }
@@ -200,6 +242,8 @@ void MarkdownParser::_wrapAppend(std::vector<MdLine>& out,
         ml.type         = type;
         ml.text         = "";
         ml.continuation = false;
+        ml.bold         = bold;
+        ml.inlineCode   = inlineCode;
         out.push_back(ml);
     }
 }
@@ -230,9 +274,11 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
     const uint16_t maxCodeBlock    = maxBQ;
     const uint16_t maxBulletNested = (maxCharsNormal > 4) ? maxCharsNormal - 4 : 1;
 
-    int  len = (int)body.length();
-    int  i   = 0;
-    bool inCodeFence = false;
+    int  len          = (int)body.length();
+    int  i            = 0;
+    bool inCodeFence  = false;
+    bool inGrid       = false;    // inside ::grid block
+    bool tableHeaderSeen = false; // first | row of a table has been emitted
 
     while (i <= len) {
         // Extract one raw input line
@@ -249,6 +295,9 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
 
         // ── Blank line ────────────────────────────────────────────────────────
         if (raw.length() == 0) {
+            // Reset block-level state
+            inGrid           = false;
+            tableHeaderSeen  = false;
             if (inCodeFence) {
                 // Preserve blank lines inside code fences as empty code lines
                 MdLine ml;
@@ -280,6 +329,49 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             continue;
         }
 
+        // ── GFM table rows: lines starting with '|' ───────────────────────────
+        if (raw.length() >= 1 && raw[0] == '|') {
+            if (_isTableSep(raw)) {
+                MdLine ml;
+                ml.type         = MD_TABLE_SEP;
+                ml.continuation = false;
+                out.push_back(ml);
+            } else {
+                auto cells = _splitCells(raw);
+                MdLineType t = tableHeaderSeen ? MD_TABLE_ROW : MD_TABLE_HEADER;
+                MdLine ml;
+                ml.type         = t;
+                ml.continuation = false;
+                ml.cells        = cells;
+                out.push_back(ml);
+                if (!tableHeaderSeen) {
+                    tableHeaderSeen = true;
+                }
+            }
+            continue;
+        }
+        // Reset table state when we leave a table block
+        tableHeaderSeen = false;
+
+        // ── Detect inline formatting flags (bold, inlineCode) on this raw line ─
+        // These flags are applied to all wrapped lines produced from this input.
+        bool lineBold     = false;
+        bool lineCodeSpan = false;
+        {
+            int boldMarkers = 0;
+            int codeMarkers = 0;
+            int idx = 0;
+            while ((idx = raw.indexOf("**", idx)) >= 0) {
+                boldMarkers++;
+                idx += 2;
+            }
+            for (int ci = 0; ci < (int)raw.length(); ci++) {
+                if (raw[ci] == '`') codeMarkers++;
+            }
+            lineBold     = (boldMarkers >= 2);
+            lineCodeSpan = (codeMarkers >= 2);
+        }
+
         // ── Horizontal rule ───────────────────────────────────────────────────
         if (_isHRule(raw)) {
             MdLine ml;
@@ -298,12 +390,39 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             if (level < (int)raw.length() && raw[level] == ' ') {
                 String text = stripInline(raw.substring(level + 1));
                 MdLineType t = (level == 1) ? MD_H1 : (level == 2) ? MD_H2 : MD_H3;
-                _wrapAppend(out, t, text, maxH, maxH);
+                _wrapAppend(out, t, text, maxH, maxH, lineBold, lineCodeSpan);
                 continue;
             }
         }
 
-        // ── XJL Bullet Journal tasks: - [ ]  - [x]  - [>]  - [<] ───────────────
+        // ── XJL habit grid header: ::grid Label | Col1 | Col2 ────────────────
+        if (raw.startsWith("::grid ")) {
+            String afterPrefix = raw.substring(7); // after "::grid "
+            afterPrefix.trim();
+            auto cells = _splitCells(afterPrefix);
+            MdLine ml;
+            ml.type   = MD_GRID_HEADER;
+            ml.cells  = cells;
+            out.push_back(ml);
+            inGrid = true;
+            continue;
+        }
+
+        // ── XJL habit grid data row (inside grid block) ───────────────────────
+        if (inGrid) {
+            if (raw.indexOf('|') >= 0) {
+                auto cells = _splitCells(raw);
+                MdLine ml;
+                ml.type  = MD_GRID_ROW;
+                ml.cells = cells;
+                out.push_back(ml);
+                continue;
+            } else {
+                inGrid = false; // non-pipe line exits grid mode; fall through
+            }
+        }
+
+        // ── XJL Bullet Journal tasks: - [ ]  - [x]  - [>]  - [<] ──────────────
         // Must be checked before the generic "- item" bullet rule because both
         // begin with "- ".  Pattern: - [<mark>] text  (length ≥ 6).
         if (raw.length() >= 6 &&
@@ -330,7 +449,8 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             {
                 String text     = stripInline(raw.substring(6));
                 int    prevSize = (int)out.size();
-                _wrapAppend(out, t, text, maxCharsTask, maxCharsTask);
+                _wrapAppend(out, t, text, maxCharsTask, maxCharsTask,
+                            lineBold, lineCodeSpan);
                 if (isDone) {
                     for (int k = prevSize; k < (int)out.size(); k++) {
                         out[k].strikethrough = true;
@@ -355,7 +475,8 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
                 (raw[indent] == '-' || raw[indent] == '*' || raw[indent] == '+') &&
                 raw[indent + 1] == ' ') {
                 String text = stripInline(raw.substring(indent + 2));
-                _wrapAppend(out, MD_BULLET_NESTED, text, maxBulletNested, maxBulletNested);
+                _wrapAppend(out, MD_BULLET_NESTED, text,
+                            maxBulletNested, maxBulletNested, lineBold, lineCodeSpan);
                 continue;
             }
         }
@@ -365,7 +486,8 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             (raw[0] == '-' || raw[0] == '*' || raw[0] == '+') &&
             raw[1] == ' ') {
             String text = stripInline(raw.substring(2));
-            _wrapAppend(out, MD_BULLET, text, maxBullet, maxBulletCont);
+            _wrapAppend(out, MD_BULLET, text, maxBullet, maxBulletCont,
+                        lineBold, lineCodeSpan);
             continue;
         }
 
@@ -379,21 +501,54 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
                 String prefix  = raw.substring(0, j + 2); // "N. "
                 String content = stripInline(raw.substring(j + 2));
                 String firstText = prefix + content;
-                _wrapAppend(out, MD_ORDERED, firstText, maxOrdered, maxOrdCont);
+                _wrapAppend(out, MD_ORDERED, firstText, maxOrdered, maxOrdCont,
+                            lineBold, lineCodeSpan);
                 continue;
             }
         }
 
-        // ── Blockquote: > ─────────────────────────────────────────────────────
+        // ── Blockquote: > (with optional callout: > [!TYPE] text) ────────────
         if (raw.length() >= 2 && raw[0] == '>' && raw[1] == ' ') {
-            String text = stripInline(raw.substring(2));
-            _wrapAppend(out, MD_BLOCKQUOTE, text, maxBQ, maxBQ);
+            String bqText = raw.substring(2);
+
+            // ── Callout / admonition: > [!NOTE] / [!TIP] / [!WARNING] / [!IMPORTANT]
+            if (bqText.startsWith("[!")) {
+                int close = bqText.indexOf(']', 2);
+                if (close > 2) {
+                    // Build uppercase tag for case-insensitive comparison
+                    String tag = bqText.substring(2, close);
+                    String tagUp;
+                    for (int ci = 0; ci < (int)tag.length(); ci++) {
+                        tagUp += (char)toupper((unsigned char)tag[ci]);
+                    }
+                    MdLineType ct = MD_CALLOUT_NOTE;
+                    bool known = true;
+                    if      (tagUp == "NOTE")      ct = MD_CALLOUT_NOTE;
+                    else if (tagUp == "TIP")       ct = MD_CALLOUT_TIP;
+                    else if (tagUp == "WARNING")   ct = MD_CALLOUT_WARNING;
+                    else if (tagUp == "IMPORTANT") ct = MD_CALLOUT_IMPORTANT;
+                    else                           known = false;
+
+                    if (known) {
+                        String content = (close + 1 < (int)bqText.length())
+                                         ? bqText.substring(close + 1) : "";
+                        content.trim();                        _wrapAppend(out, ct, stripInline(content), maxBQ, maxBQ,
+                                    lineBold, lineCodeSpan);
+                        continue;
+                    }
+                }
+            }
+
+            // Regular blockquote
+            _wrapAppend(out, MD_BLOCKQUOTE, stripInline(bqText), maxBQ, maxBQ,
+                        lineBold, lineCodeSpan);
             continue;
         }
         if (raw.length() >= 1 && raw[0] == '>') {
             // ">" with no space — still a blockquote
             String text = stripInline(raw.substring(1));
-            _wrapAppend(out, MD_BLOCKQUOTE, text, maxBQ, maxBQ);
+            _wrapAppend(out, MD_BLOCKQUOTE, text, maxBQ, maxBQ,
+                        lineBold, lineCodeSpan);
             continue;
         }
 
@@ -406,14 +561,35 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
 
             if (t != MD_NORMAL) {
                 String text = stripInline(raw.substring(2));
-                _wrapAppend(out, t, text, maxCharsSignify, maxCharsSignify);
+                _wrapAppend(out, t, text, maxCharsSignify, maxCharsSignify,
+                            lineBold, lineCodeSpan);
                 continue;
             }
         }
 
+        // ── Definition list: ": Definition" ──────────────────────────────────
+        if (raw.length() >= 2 && raw[0] == ':' && raw[1] == ' ') {
+            String text = stripInline(raw.substring(2));
+            _wrapAppend(out, MD_DEFLIST_DEF, text, maxBQ, maxBQ,
+                        lineBold, lineCodeSpan);
+            continue;
+        }
+
         // ── Normal paragraph ──────────────────────────────────────────────────
         String text = stripInline(raw);
-        _wrapAppend(out, MD_NORMAL, text, maxCharsNormal, maxCharsNormal);
+        _wrapAppend(out, MD_NORMAL, text, maxCharsNormal, maxCharsNormal,
+                    lineBold, lineCodeSpan);
+    }
+
+    // ── Post-process: promote MD_NORMAL immediately before MD_DEFLIST_DEF ──────
+    // A non-continuation normal line that is immediately followed by a
+    // non-continuation def line becomes the definition list term.
+    for (int k = 1; k < (int)out.size(); k++) {
+        if (out[k].type == MD_DEFLIST_DEF && !out[k].continuation &&
+            out[k - 1].type == MD_NORMAL  && !out[k - 1].continuation) {
+            out[k - 1].type = MD_DEFLIST_TERM;
+            out[k - 1].bold = true; // terms always render faux-bold
+        }
     }
 
     return out;
