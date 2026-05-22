@@ -240,4 +240,4 @@ Full release notes: [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
-A LICENSE file has not yet been added to this repository. Until one is present, the source code is not licensed for redistribution or modification by third parties.
+MIT License — see [LICENSE](LICENSE)
