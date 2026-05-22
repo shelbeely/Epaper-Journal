@@ -141,6 +141,7 @@ void setup() {
     if (!gSafeModeActive) {
         gStorage.init();
         gDiag.storageReady = gStorage.ready();
+        gJournalMgr.begin();
     }
 
     // ── Battery ───────────────────────────────────────────────────────────

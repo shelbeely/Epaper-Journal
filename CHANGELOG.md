@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- Journal entry saves are now atomic: writes go to a sibling `.tmp` file first and are renamed into place only after a successful write.
+- On boot, stale orphaned journal `.tmp` files are cleaned up from month directories.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
