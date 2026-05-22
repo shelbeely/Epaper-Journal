@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "BrowseScreen.h"
+#include <WiFi.h>
 #include "../journal/PromptPack.h"
 #include "../vault/VaultManager.h"
 
@@ -25,7 +26,9 @@ BrowseResult BrowseScreen::run(String& outPath) {
     // Build display labels:
     //   item 0 → "[ + NEW ENTRY ]"  (BrowseResult::NEW_ENTRY)
     //   item 1 → "[ STREAK ]"       (BrowseResult::CALENDAR)
-    //   item 2+ → entry titles      (BrowseResult::OPEN_ENTRY)
+    //   item 2 → vault toggle       (BrowseResult::VAULT_TOGGLE)
+    //   item 3 → wifi toggle        (BrowseResult::WIFI_TOGGLE)
+    //   item 4+ → entry titles      (BrowseResult::OPEN_ENTRY)
     std::vector<String> labels;
     labels.reserve(paths.size() + FIXED_ITEMS);
     labels.push_back("[ + NEW ENTRY ]");
@@ -36,6 +39,7 @@ BrowseResult BrowseScreen::run(String& outPath) {
     } else {
         labels.push_back("[ VAULT (N/A) ]");
     }
+    labels.push_back(WiFi.getMode() == WIFI_OFF ? "[ WI-FI: OFF ]" : "[ WI-FI: ON ]");
     for (auto& p : paths) {
         labels.push_back(_jm.getEntryTitle(p));
     }
@@ -55,11 +59,15 @@ BrowseResult BrowseScreen::run(String& outPath) {
 
         // ── Idle timeout → sleep screen ───────────────────────────────────────
         if (millis() - lastActivity > IDLE_SLEEP_TIMEOUT_MS) {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
             _sleepScreen.sleep(0); // does not return
         }
 
         // ── Power-button deep sleep ───────────────────────────────────────────
         if (_input.isPowerButtonPressed()) {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
             _sleepScreen.sleep(0); // does not return
         }
 
@@ -81,6 +89,8 @@ BrowseResult BrowseScreen::run(String& outPath) {
                 return BrowseResult::CALENDAR;
             } else if (selected == 2) {
                 return BrowseResult::VAULT_TOGGLE;
+            } else if (selected == 3) {
+                return BrowseResult::WIFI_TOGGLE;
             } else {
                 outPath = paths[selected - FIXED_ITEMS];
                 return BrowseResult::OPEN_ENTRY;

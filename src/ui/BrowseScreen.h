@@ -23,6 +23,7 @@ enum class BrowseResult {
     NEW_ENTRY,     // user chose "[ + NEW ENTRY ]"
     CALENDAR,      // user chose "[ STREAK ]"
     VAULT_TOGGLE,  // user chose "[ LOCK VAULT ]" or "[ UNLOCK VAULT ]"
+    WIFI_TOGGLE,   // user chose "[ WIFI: ON ]" or "[ WIFI: OFF ]"
     BACK,          // user pressed Back / no action
 };
 
@@ -34,7 +35,7 @@ public:
 
     // Run the browse UI (blocking). Returns the result code.
     // On OPEN_ENTRY, `outPath` is filled with the selected entry path.
-    // On NEW_ENTRY / CALENDAR / VAULT_TOGGLE / BACK, `outPath` is empty.
+    // On NEW_ENTRY / CALENDAR / VAULT_TOGGLE / WIFI_TOGGLE / BACK, `outPath` is empty.
     BrowseResult run(String& outPath);
 
 private:
@@ -49,7 +50,7 @@ private:
     // Header area: title row + prompt row + padding (fixed layout).
     static constexpr uint8_t  HEADER_H    = 44;
     // Number of fixed items before the entry list
-    static constexpr uint8_t  FIXED_ITEMS = 3;  // NEW_ENTRY + STREAK + VAULT
+    static constexpr uint8_t  FIXED_ITEMS = 4;  // NEW_ENTRY + STREAK + VAULT + WIFI
 
     uint16_t _itemH;  ///< Line height of the active font at SCALE (runtime)
 

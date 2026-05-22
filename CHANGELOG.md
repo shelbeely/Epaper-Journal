@@ -9,9 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 - Wi-Fi provisioning fallback at `http://192.168.4.1/wifi-setup` that stores credentials in NVS and reboots the device.
+- Added a persisted Wi-Fi toggle (`WIFI_AUTO_ON`, NVS `system/wifi_on`) with a Browse menu item to turn Wi-Fi ON/OFF.
 
 ### Changed
 - Boot Wi-Fi setup now prefers saved NVS credentials over compile-time defaults when available.
+- Wi-Fi now restores from persisted state on boot instead of always starting.
+- Browse idle/power deep-sleep path now powers down Wi-Fi before entering sleep.
+- Web API now returns `503 {"error":"wifi_disabled"}` when Wi-Fi is disabled.
 
 ### Fixed
 - OTA health check now treats an active soft-AP interface as healthy even when no clients are connected, preventing false rollback requests after flashing.

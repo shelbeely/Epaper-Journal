@@ -13,6 +13,14 @@
 #include "mbedtls/sha256.h"
 #include <esp_random.h>
 
+static bool rejectWhenWifiDisabled(AsyncWebServerRequest* req) {
+    if (WiFi.getMode() == WIFI_OFF) {
+        req->send(503, "application/json", "{\"error\":\"wifi_disabled\"}");
+        return true;
+    }
+    return false;
+}
+
 // ── LogRingBuffer ─────────────────────────────────────────────────────────────
 
 static const char WIFI_SETUP_HTML[] PROGMEM = R"html(
@@ -214,6 +222,7 @@ void WebApi::begin() {
             req->send(200, "text/html", String(FPSTR(WIFI_SETUP_HTML)));
             return;
         }
+        if (rejectWhenWifiDisabled(req)) return;
         AsyncWebServerResponse* resp = req->beginResponse_P(
             200, "text/html", UI_HTML_GZ, UI_HTML_GZ_LEN);
         resp->addHeader("Content-Encoding", "gzip");
@@ -242,6 +251,7 @@ void WebApi::pushLog(const String& line) {
 void WebApi::_registerDisplayRoutes() {
     // GET /api/display/status
     _server.on("/api/display/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _diag.refresh();
         JsonDocument doc;
         JsonObject obj = doc.to<JsonObject>();
@@ -259,6 +269,7 @@ void WebApi::_registerDisplayRoutes() {
 
     // GET /api/display/screenshot.bmp — 1-bit BMP from framebuffer
     _server.on("/api/display/screenshot.bmp", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         uint16_t w = _display.width();
         uint16_t h = _display.height();
         uint16_t rowBytes = (w + 7) / 8;
@@ -304,6 +315,7 @@ void WebApi::_registerDisplayRoutes() {
         [](AsyncWebServerRequest*) {},
         nullptr,
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            if (rejectWhenWifiDisabled(req)) return;
             JsonDocument doc;
             if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
                 req->send(400, "text/plain", "bad json");
@@ -317,6 +329,7 @@ void WebApi::_registerDisplayRoutes() {
 
     // POST /api/display/refresh/full
     _server.on("/api/display/refresh/full", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _display.fullRefresh();
         req->send(200, "text/plain", "ok");
     });
@@ -326,6 +339,7 @@ void WebApi::_registerDisplayRoutes() {
         [](AsyncWebServerRequest*) {},
         nullptr,
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            if (rejectWhenWifiDisabled(req)) return;
             JsonDocument doc;
             if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
                 req->send(400, "text/plain", "bad json");
@@ -342,6 +356,7 @@ void WebApi::_registerDisplayRoutes() {
 
     // POST /api/display/clear
     _server.on("/api/display/clear", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _display.clear();
         req->send(200, "text/plain", "ok");
     });
@@ -352,6 +367,7 @@ void WebApi::_registerDisplayRoutes() {
 void WebApi::_registerJournalRoutes() {
     // GET /api/journal/entries?year=YYYY&month=MM
     _server.on("/api/journal/entries", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         uint16_t year  = req->hasParam("year")  ? (uint16_t)req->getParam("year")->value().toInt()  : 0;
         uint8_t  month = req->hasParam("month") ? (uint8_t) req->getParam("month")->value().toInt() : 0;
         auto paths = _jm.listEntries(year, month);
@@ -373,6 +389,7 @@ void WebApi::_registerJournalRoutes() {
 
     // GET /api/journal/entry?path=<path>
     _server.on("/api/journal/entry", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         if (!req->hasParam("path")) {
             req->send(400, "text/plain", "missing path");
             return;
@@ -391,6 +408,7 @@ void WebApi::_registerJournalRoutes() {
         [](AsyncWebServerRequest*) {},
         nullptr,
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            if (rejectWhenWifiDisabled(req)) return;
             JsonDocument doc;
             if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
                 req->send(400, "text/plain", "bad json");
@@ -411,6 +429,7 @@ void WebApi::_registerJournalRoutes() {
 
     // DELETE /api/journal/entry?path=<path>
     _server.on("/api/journal/entry", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         if (!req->hasParam("path")) {
             req->send(400, "text/plain", "missing path");
             return;
@@ -426,6 +445,7 @@ void WebApi::_registerJournalRoutes() {
         [](AsyncWebServerRequest*) {},
         nullptr,
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            if (rejectWhenWifiDisabled(req)) return;
             String title = "New Entry";
             if (len > 0) {
                 JsonDocument doc;
@@ -458,6 +478,7 @@ void WebApi::_registerVaultRoutes() {
     // GET /api/vault/status
     _server.on("/api/vault/status", HTTP_GET,
                [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         JsonDocument doc;
         doc["locked"] = !_vault.isUnlocked();
         doc["unlock_locked_out"] = _vault.isUnlockLockedOut();
@@ -491,6 +512,7 @@ void WebApi::_registerVaultRoutes() {
     // POST /api/vault/lock
     _server.on("/api/vault/lock", HTTP_POST,
                [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _vault.lock();
         req->send(200, "application/json", "{\"ok\":true}");
     });
@@ -503,6 +525,7 @@ void WebApi::_registerVaultRoutes() {
                nullptr,
                [this](AsyncWebServerRequest* req,
                       uint8_t* data, size_t len, size_t, size_t) {
+        if (rejectWhenWifiDisabled(req)) return;
         // 1. Validate and consume the nonce immediately (single-use).
         if (!_challengeActive ||
             (uint32_t)millis() > _challengeExpiry) {
@@ -665,6 +688,7 @@ void WebApi::_registerWifiProvisioningRoutes() {
 void WebApi::_registerDevRoutes() {
     // GET /api/dev/status — full X4Diagnostics JSON
     _server.on("/api/dev/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _diag.refresh();
         JsonDocument doc;
         JsonObject obj = doc.to<JsonObject>();
@@ -676,6 +700,7 @@ void WebApi::_registerDevRoutes() {
 
     // GET /api/dev/health
     _server.on("/api/dev/health", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _diag.refresh();
         JsonDocument doc;
         JsonObject obj = doc.to<JsonObject>();
@@ -694,11 +719,13 @@ void WebApi::_registerDevRoutes() {
 
     // GET /api/dev/logs
     _server.on("/api/dev/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         req->send(200, "application/json", _logs.toJson());
     });
 
     // GET /api/dev/ota
     _server.on("/api/dev/ota", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _diag.refresh();
         JsonDocument doc;
         JsonObject obj = doc.to<JsonObject>();
@@ -713,6 +740,7 @@ void WebApi::_registerDevRoutes() {
 
     // GET /api/dev/display — same as /api/display/status but under dev path
     _server.on("/api/dev/display", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         _diag.refresh();
         JsonDocument doc;
         JsonObject obj = doc.to<JsonObject>();
@@ -729,6 +757,7 @@ void WebApi::_registerDevRoutes() {
 
     // POST /api/dev/ota/check — fetch manifest and return result
     _server.on("/api/dev/ota/check", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         OtaManifest m = _ota.fetchManifest();
         JsonDocument doc;
         JsonObject obj = doc.to<JsonObject>();
@@ -745,6 +774,7 @@ void WebApi::_registerDevRoutes() {
 
     // POST /api/dev/ota/apply — download and flash
     _server.on("/api/dev/ota/apply", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         OtaManifest m = _ota.fetchManifest();
         OtaResult r = _ota.applyUpdate(m, _diag.batteryPercent);
         req->send(200, "text/plain", OtaManager::resultString(r));
@@ -753,6 +783,7 @@ void WebApi::_registerDevRoutes() {
 
     // POST /api/dev/ota/rollback
     _server.on("/api/dev/ota/rollback", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         req->send(200, "text/plain", "rolling back...");
         delay(200);
         _ota.requestRollback();
@@ -760,6 +791,7 @@ void WebApi::_registerDevRoutes() {
 
     // POST /api/dev/reboot
     _server.on("/api/dev/reboot", HTTP_POST, [](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         req->send(200, "text/plain", "rebooting...");
         delay(200);
         ESP.restart();
@@ -829,12 +861,14 @@ self.addEventListener('fetch', e => {
 void WebApi::_registerExportRoutes() {
     // GET /manifest.json — PWA Web App Manifest
     _server.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         req->send(200, "application/manifest+json",
                   String(FPSTR(PWA_MANIFEST)));
     });
 
     // GET /sw.js — service worker
     _server.on("/sw.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         auto* resp = req->beginResponse(200, "application/javascript",
                                          String(FPSTR(SERVICE_WORKER)));
         resp->addHeader("Service-Worker-Allowed", "/");
@@ -844,6 +878,7 @@ void WebApi::_registerExportRoutes() {
     // GET /api/export/all — JSON array of all entries (title, date, tags, body)
     // If an entry is locked (vault not unlocked), body is omitted.
     _server.on("/api/export/all", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
         JsonDocument doc;
         JsonArray arr = doc.to<JsonArray>();
 

@@ -34,6 +34,9 @@
 #ifndef WIFI_PROVISIONING_ENABLED
   #define WIFI_PROVISIONING_ENABLED 1
 #endif
+#ifndef WIFI_AUTO_ON
+  #define WIFI_AUTO_ON 1
+#endif
 
 // Soft-AP SSID for Web Editor mode
 #define SOFTAP_SSID     "eJournal"
