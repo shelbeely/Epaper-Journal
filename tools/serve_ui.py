@@ -27,54 +27,144 @@ _HTML_PATH = _PROJECT_ROOT / "data" / "index.html"
 def _seed_entries() -> dict:
     """Return a dict of path → raw Markdown content for sample journal entries."""
     today = datetime.date.today()
+
+    def _entry(offset_days: int, hour: int, title: str, body: str) -> tuple:
+        d = today - datetime.timedelta(days=offset_days)
+        return d, hour, title, body
+
     samples = [
-        (
-            today,
-            "Morning Pages",
-            "Woke up early and wrote a few pages before breakfast.\n\n"
-            "The day stretched out ahead, full of possibility.",
-        ),
-        (
-            today - datetime.timedelta(days=1),
-            "Project Reflection",
-            "Spent the afternoon reviewing the firmware architecture.\n\n"
-            "::theme: building\n"
-            "::season: spring\n"
-            "::rating: 4\n"
-            "~ Feels satisfying when the pieces finally click into place.",
-        ),
-        (
-            today - datetime.timedelta(days=3),
-            "Weekend Walk",
-            "Long walk through the park. Left the phone at home for once.\n\n"
-            "The light through the leaves was exactly right.",
-        ),
-        (
-            today - datetime.timedelta(days=30),
-            "April Check-in",
-            "Reviewing the goals I set last month. Progress is slower than\n"
-            "planned, but the direction feels right.",
-        ),
-        (
-            today - datetime.timedelta(days=35),
-            "Spring Plans",
-            "Long list of things to build, places to see, books to read.\n\n"
-            "Narrowed it down to three.\n\n"
-            "::theme: planning\n::season: spring\n::rating: 3",
-        ),
-        (
-            today - datetime.timedelta(days=60),
-            "Monthly Review",
-            "Quarter is almost done. Looking back at what shipped and what\n"
-            "slipped. More of the former than expected.",
-        ),
+        # ── current month ──────────────────────────────────────────────────────
+        _entry(0, 8, "Morning Pages",
+               "Woke up before the alarm again. Sat with coffee by the window\n"
+               "and wrote until the light changed.\n\n"
+               "The day felt wider for it."),
+        _entry(1, 21, "Project Reflection",
+               "Spent the afternoon reviewing the firmware architecture.\n\n"
+               "::theme: building\n"
+               "::season: spring\n"
+               "::rating: 4\n"
+               "~ Feels satisfying when the pieces finally click into place.\n\n"
+               "The display driver abstraction is cleaner than expected. The\n"
+               "single-buffer constraint forced a simpler design."),
+        _entry(3, 10, "Weekend Walk",
+               "Long walk through the park. Left the phone at home for once.\n\n"
+               "The light through the leaves was exactly right. A heron stood\n"
+               "motionless at the edge of the pond for a full ten minutes."),
+        _entry(5, 14, "Coffee Shop Notes",
+               "## Observations\n\n"
+               "The couple at the corner table argued in whispers for an hour\n"
+               "then laughed about something and ordered cake.\n\n"
+               "## Ideas\n\n"
+               "- Sleep tracking via wrist sensor\n"
+               "- Journal prompts seeded by season\n"
+               "- Offline-first sync over BLE"),
+        _entry(7, 9, "Reading Log — April",
+               "Finished *The Dispossessed* last night. The parallel narrative\n"
+               "structure lands harder on a second read.\n\n"
+               "Now starting *A Pattern Language*. Already flagged twelve pages.\n\n"
+               "::theme: reading\n"
+               "::season: spring\n"
+               "::rating: 5\n"
+               "~ Some books rearrange the furniture in your mind."),
+        _entry(10, 19, "System Design Draft",
+               "## Context\n\n"
+               "Mapping out the event loop for the next firmware revision.\n\n"
+               "## Constraints\n\n"
+               "- 320 KB DRAM total; ~180 KB available after stack and heap\n"
+               "- Framebuffer must stay in single-buffer mode\n"
+               "- No blocking calls in the WiFi task\n\n"
+               "## Proposed approach\n\n"
+               "Move all UI rendering to a dedicated FreeRTOS task pinned to\n"
+               "core 0. Web API remains on core 1 via AsyncTCP."),
+        _entry(12, 22, "Letters Unsent",
+               "There are things I've been meaning to say for months.\n\n"
+               "Not because they're hard — they're not, actually — but because\n"
+               "putting them into words makes them real in a way that costs\n"
+               "something.\n\n"
+               "I don't know why I keep delaying. The cost of silence is higher.\n\n"
+               "::theme: relationships\n"
+               "::season: spring\n"
+               "::rating: 3\n"
+               "~ Worth finishing before the month is out."),
+        _entry(14, 7, "Quick Thought",
+               "Gratitude is a practice, not a feeling.\n\n"
+               "You don't wait to feel it. You do the thing and it follows."),
+
+        # ── previous month ─────────────────────────────────────────────────────
+        _entry(32, 9, "April Check-in",
+               "Reviewing the goals I set last month.\n\n"
+               "Progress is slower than planned, but the direction feels right.\n"
+               "The important thing is I haven't stopped."),
+        _entry(35, 15, "Spring Plans",
+               "Long list of things to build, places to see, books to read.\n\n"
+               "Narrowed it down to three. Everything else is a maybe.\n\n"
+               "::theme: planning\n"
+               "::season: spring\n"
+               "::rating: 3\n"
+               "~ Constraints are a form of generosity."),
+        _entry(38, 20, "Rainy Day",
+               "Stayed in all day. Made soup from what was left in the fridge.\n\n"
+               "Read half a novel. Napped. Watched the rain move across the\n"
+               "window in sheets.\n\n"
+               "Not a wasted day."),
+        _entry(41, 11, "Book Finished: Piranesi",
+               "Stayed up until 2am to finish it. Worth it.\n\n"
+               "::theme: reading\n"
+               "::season: spring\n"
+               "::rating: 5\n"
+               "~ The ending is exactly right and I am still thinking about it."),
+        _entry(44, 16, "Travel Notes — Day 1",
+               "## Getting there\n\n"
+               "Train delayed by forty minutes. Met a retired cartographer in\n"
+               "the waiting area who described mapping coastlines by hand.\n\n"
+               "## Hotel\n\n"
+               "Small room, large window, acceptable coffee. The city sounds\n"
+               "different at this end."),
+        _entry(47, 8, "Monthly Review — March",
+               "## What shipped\n\n"
+               "- Vault encryption layer\n"
+               "- OTA update workflow\n"
+               "- BMP screenshot API\n\n"
+               "## What slipped\n\n"
+               "- Theme screen polish\n"
+               "- Battery indicator\n\n"
+               "More of the former than I expected. Good month."),
+
+        # ── two months ago ─────────────────────────────────────────────────────
+        _entry(62, 9, "Winter Wrap-up",
+               "The last cold morning. Or at least, the last one I'll call\n"
+               "winter.\n\n"
+               "::theme: transitions\n"
+               "::season: winter\n"
+               "::rating: 4\n"
+               "~ Endings are just beginnings with better lighting."),
+        _entry(65, 14, "Goals for Spring",
+               "## Creative\n\n"
+               "Finish the font renderer. Write more.\n\n"
+               "## Physical\n\n"
+               "Walk every morning before opening the laptop.\n\n"
+               "## Relationships\n\n"
+               "Call the people I've been meaning to call."),
+        _entry(70, 19, "Code Review Thoughts",
+               "Reviewed three PRs today. Good code. Clear naming. Tests that\n"
+               "explain what they're testing.\n\n"
+               "The best reviews aren't about catching mistakes — they're about\n"
+               "understanding what the author was trying to do."),
+        _entry(75, 11, "Museum Visit",
+               "The textile collection on the third floor. Fabric from three\n"
+               "centuries ago, still vivid.\n\n"
+               "The placard said the dyes were plant-based. Indigo from a plant\n"
+               "that no longer grows in that region.\n\n"
+               "::theme: art\n"
+               "::season: winter\n"
+               "::rating: 4"),
     ]
 
     entries: dict = {}
-    for date, title, body in samples:
-        ts = date.strftime("%Y%m%d") + "-090000"
+    for date, hour, title, body in samples:
+        ts = date.strftime("%Y%m%d") + f"-{hour:02d}0000"
         path = f"/journal/{date.year}/{date.month:02d}/{ts}.md"
-        date_str = date.strftime("%Y-%m-%d") + " 09:00:00"
+        date_str = date.strftime("%Y-%m-%d") + f" {hour:02d}:00:00"
         entries[path] = f"---\ntitle: {title}\ndate: {date_str}\n---\n{body}"
     return entries
 

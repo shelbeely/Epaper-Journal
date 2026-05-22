@@ -404,13 +404,20 @@ persisted to disk.
 
 `tools/screenshot_ui.py` starts the mock server internally and drives a
 headless Chromium browser via [Playwright](https://playwright.dev/python/)
-to capture three PNG views automatically:
+to capture nine PNG views automatically — covering every meaningful state
+of the UI:
 
 | File | What it shows |
 |---|---|
-| `web-ui-list.png` | Entry list for the current month |
-| `web-ui-editor.png` | First entry open in the Markdown editor |
-| `web-ui-empty.png` | Month navigation with no entries |
+| `list-current-month.png` | Entry list — current month (8 entries) |
+| `list-prev-month.png` | Entry list — previous month (6 entries) |
+| `list-two-months-ago.png` | Entry list — two months ago (4 entries) |
+| `list-empty.png` | Entry list — future month with no entries |
+| `editor-plain.png` | Editor — plain prose entry |
+| `editor-rich.png` | Editor — XJL-annotated entry (`::theme`, `::season`, `::rating`, `~`) |
+| `editor-long.png` | Editor — long multi-section entry with headings |
+| `editor-saved.png` | Editor — "Saved." success toast visible |
+| `editor-new.png` | Editor — freshly created blank entry |
 
 **One-time setup:**
 
