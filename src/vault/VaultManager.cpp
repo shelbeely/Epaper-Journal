@@ -114,11 +114,13 @@ constexpr uint8_t PIN_VERIFIER_MAGIC[] = {
 VaultManager::VaultManager() {
     memset(_key, 0, sizeof(_key));
     _lastUnlockResult = UnlockResult::Error;
+    memset(_legacyKey, 0, sizeof(_legacyKey));
 }
 
 VaultManager::~VaultManager() {
     // Zero out the key on destruction
     memset(_key, 0, sizeof(_key));
+    memset(_legacyKey, 0, sizeof(_legacyKey));
 }
 
 bool VaultManager::isUnlocked() const {
@@ -146,6 +148,7 @@ uint32_t VaultManager::failedUnlockAttempts() const {
 
 void VaultManager::lock() {
     memset(_key, 0, sizeof(_key));
+    memset(_legacyKey, 0, sizeof(_legacyKey));
 }
 
 bool VaultManager::_loadOrCreateSalt(uint8_t salt[16]) {
@@ -184,7 +187,7 @@ bool VaultManager::deriveKeyFromPin(const char* pin) {
         return false;
     }
 
-    // PBKDF2-HMAC-SHA256: 10 000 iterations → 32-byte key
+    // PBKDF2-HMAC-SHA256: derive both current (100k) and legacy (10k) keys.
     mbedtls_md_context_t md_ctx;
     mbedtls_md_init(&md_ctx);
     const mbedtls_md_info_t* md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
@@ -199,8 +202,17 @@ bool VaultManager::deriveKeyFromPin(const char* pin) {
         &md_ctx,
         reinterpret_cast<const unsigned char*>(pin), strlen(pin),
         salt, 16,
-        10000,
+        100000,
         32, derivedKey);
+
+    if (rc == 0) {
+        rc = mbedtls_pkcs5_pbkdf2_hmac(
+            &md_ctx,
+            reinterpret_cast<const unsigned char*>(pin), strlen(pin),
+            salt, 16,
+            10000,
+            32, _legacyKey);
+    }
 
     mbedtls_md_free(&md_ctx);
     if (rc != 0) {
@@ -280,7 +292,10 @@ String VaultManager::decrypt(const String& ciphertext) {
     if (!isEncryptedContent(ciphertext)) return "";
 
     // Strip header line and any trailing newline
-    String b64 = ciphertext.substring(strlen(VAULT_HEADER));
+    const bool isLegacy = ciphertext.startsWith(VAULT_HEADER_V1);
+    const char* header  = isLegacy ? VAULT_HEADER_V1 : VAULT_HEADER_V2;
+    const uint8_t* key  = isLegacy ? _legacyKey : _key;
+    String b64 = ciphertext.substring(strlen(header));
     // Remove trailing newline if present
     if (b64.length() > 0 && b64[b64.length() - 1] == '\n') {
         b64 = b64.substring(0, b64.length() - 1);
@@ -307,7 +322,7 @@ String VaultManager::decrypt(const String& ciphertext) {
 
     mbedtls_gcm_context gcm;
     mbedtls_gcm_init(&gcm);
-    mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, _key, 256);
+    mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, key, 256);
 
     int rc = mbedtls_gcm_auth_decrypt(
         &gcm, ptLen,
@@ -331,7 +346,7 @@ String VaultManager::decrypt(const String& ciphertext) {
 
 /*static*/
 bool VaultManager::isEncryptedContent(const String& content) {
-    return content.startsWith(VAULT_HEADER);
+    return content.startsWith(VAULT_HEADER_V2) || content.startsWith(VAULT_HEADER_V1);
 }
 
 bool VaultManager::_loadPinVerifier(uint8_t* verifier, size_t len) {

@@ -15,6 +15,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Security
 - Added NVS-backed vault PIN lockout tracking with escalating 30 second, 5 minute, and 1 hour back-off windows after repeated failed unlock attempts.
 - `/api/vault/unlock` now returns HTTP 429 with `Retry-After` when the vault is temporarily locked and reports the remaining wait time.
+- Increased vault PIN key-derivation cost to PBKDF2-SHA256 with 100,000 iterations for new vault ciphertext.
+- Added legacy vault migration so `---vault-v1---` (10k-iteration) content is transparently re-encrypted as `---vault-v2---` after successful unlock.
 
 ## [0.1.0] - 2026-05-20
 

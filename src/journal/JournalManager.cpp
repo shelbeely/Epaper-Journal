@@ -91,6 +91,12 @@ bool JournalManager::loadEntry(const String& path, JournalEntry& out) {
             }
             JournalFrontmatter::parse(decrypted, out);
             out.locked = false;
+            if (content.startsWith(VaultManager::VAULT_HEADER_V1)) {
+                String upgraded = _vault->encrypt(decrypted);
+                if (!upgraded.isEmpty()) {
+                    _storage.writeEntry(path.c_str(), upgraded);
+                }
+            }
         } else {
             out.title  = "[LOCKED]";
             out.body   = "[This entry is encrypted. Unlock the vault to read.]";

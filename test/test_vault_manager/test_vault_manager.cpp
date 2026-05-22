@@ -13,6 +13,7 @@
 
 #include <unity.h>
 #include <string.h>
+#include <vector>
 
 void setUp(void)  {
     Preferences::reset();
@@ -20,9 +21,64 @@ void setUp(void)  {
 }
 void tearDown(void) {}
 
+static String makeLegacyCiphertext(const char* pin, const String& plaintext) {
+    uint8_t salt[16] = {0};
+    Preferences prefs;
+    prefs.begin("vault", false);
+    size_t n = prefs.getBytes("salt", salt, sizeof(salt));
+    prefs.end();
+    if (n != sizeof(salt)) return "";
+
+    uint8_t key[32] = {0};
+    mbedtls_md_context_t md_ctx;
+    mbedtls_md_init(&md_ctx);
+    const mbedtls_md_info_t* md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (mbedtls_md_setup(&md_ctx, md_info, 1) != 0) {
+        mbedtls_md_free(&md_ctx);
+        return "";
+    }
+
+    int rc = mbedtls_pkcs5_pbkdf2_hmac(
+        &md_ctx,
+        reinterpret_cast<const unsigned char*>(pin), strlen(pin),
+        salt, sizeof(salt),
+        10000,
+        sizeof(key), key);
+    mbedtls_md_free(&md_ctx);
+    if (rc != 0) return "";
+
+    const size_t ptLen = plaintext.length();
+    std::vector<uint8_t> blob(12 + 16 + ptLen);
+    uint8_t* nonce = blob.data();
+    uint8_t* tag   = blob.data() + 12;
+    uint8_t* ct    = blob.data() + 12 + 16;
+    memset(nonce, 0, 12);
+
+    mbedtls_gcm_context gcm;
+    mbedtls_gcm_init(&gcm);
+    mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, key, 256);
+    rc = mbedtls_gcm_crypt_and_tag(
+        &gcm, MBEDTLS_GCM_ENCRYPT, ptLen,
+        nonce, 12, nullptr, 0,
+        reinterpret_cast<const uint8_t*>(plaintext.c_str()), ct,
+        16, tag);
+    mbedtls_gcm_free(&gcm);
+    if (rc != 0) return "";
+
+    String result = VaultManager::VAULT_HEADER_V1;
+    result += b64Enc(blob.data(), blob.size());
+    result += "\n";
+    return result;
+}
+
 // ── isEncryptedContent ────────────────────────────────────────────────────────
 
 void test_is_encrypted_content_detects_header(void) {
+    String enc = "---vault-v2---\nABC123\n";
+    TEST_ASSERT_TRUE(VaultManager::isEncryptedContent(enc));
+}
+
+void test_is_encrypted_content_detects_legacy_header(void) {
     String enc = "---vault-v1---\nABC123\n";
     TEST_ASSERT_TRUE(VaultManager::isEncryptedContent(enc));
 }
@@ -236,6 +292,17 @@ void test_lockout_window_escalates_to_five_minutes_then_one_hour(void) {
                           (int)vm.lastUnlockResult());
     TEST_ASSERT_EQUAL_UINT32(5, vm.failedUnlockAttempts());
     TEST_ASSERT_EQUAL_UINT32(3600, vm.unlockRetryAfterSeconds());
+
+void test_decrypt_legacy_v1_content_succeeds(void) {
+    VaultManager vm;
+    TEST_ASSERT_TRUE(vm.deriveKeyFromPin("1234"));
+
+    String legacyCipher = makeLegacyCiphertext("1234", "legacy secret");
+    TEST_ASSERT_FALSE(legacyCipher.isEmpty());
+    TEST_ASSERT_TRUE(legacyCipher.startsWith(VaultManager::VAULT_HEADER_V1));
+
+    String result = vm.decrypt(legacyCipher);
+    TEST_ASSERT_EQUAL_STRING("legacy secret", result.c_str());
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -244,6 +311,7 @@ int main(int /*argc*/, char** /*argv*/) {
     UNITY_BEGIN();
 
     RUN_TEST(test_is_encrypted_content_detects_header);
+    RUN_TEST(test_is_encrypted_content_detects_legacy_header);
     RUN_TEST(test_is_encrypted_content_rejects_plaintext);
     RUN_TEST(test_is_encrypted_content_rejects_empty);
     RUN_TEST(test_initially_locked);
@@ -264,6 +332,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_third_failed_pin_attempt_triggers_30_second_lockout);
     RUN_TEST(test_lockout_blocks_unlock_until_retry_after_elapses);
     RUN_TEST(test_lockout_window_escalates_to_five_minutes_then_one_hour);
+    RUN_TEST(test_decrypt_legacy_v1_content_succeeds);
 
     return UNITY_END();
 }

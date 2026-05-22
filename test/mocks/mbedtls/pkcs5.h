@@ -14,7 +14,7 @@
 inline int mbedtls_pkcs5_pbkdf2_hmac(mbedtls_md_context_t* /*ctx*/,
                                       const unsigned char* password, size_t plen,
                                       const unsigned char* salt,     size_t slen,
-                                      unsigned int /*iterations*/,
+                                      unsigned int iterations,
                                       uint32_t key_length,
                                       unsigned char* output) {
     std::memset(output, 0, key_length);
@@ -22,5 +22,8 @@ inline int mbedtls_pkcs5_pbkdf2_hmac(mbedtls_md_context_t* /*ctx*/,
         output[i % key_length] ^= password[i];
     for (size_t i = 0; i < slen; i++)
         output[(plen + i) % key_length] ^= salt[i];
+    for (uint32_t i = 0; i < key_length; i++) {
+        output[i] ^= static_cast<unsigned char>((iterations >> ((i % 4) * 8)) & 0xFF);
+    }
     return 0;
 }

@@ -3,11 +3,13 @@
 // VaultManager.h — AES-256-GCM encrypted journal vault
 //
 // Provides per-session PIN-based encryption for journal entries.
-// Key derivation: PBKDF2-SHA256(pin, salt, 10000) → 32-byte AES key.
+// Key derivation:
+//   - v2: PBKDF2-SHA256(pin, salt, 100000) → 32-byte AES key.
+//   - v1 (legacy): PBKDF2-SHA256(pin, salt, 10000).
 // The 16-byte salt is generated once and persisted in NVS.
 //
 // Encrypted file format (stored on SD card):
-//   ---vault-v1---
+//   ---vault-v2---
 //   <base64(nonce[12] | tag[16] | ciphertext[N])>
 //
 // The plaintext that is encrypted is the full YAML-frontmatter Markdown file.
@@ -58,7 +60,9 @@ public:
     // True if `content` begins with the vault header (VAULT_HEADER).
     static bool isEncryptedContent(const String& content);
 
-    static constexpr const char* VAULT_HEADER = "---vault-v1---\n";
+    static constexpr const char* VAULT_HEADER = "---vault-v2---\n";
+    static constexpr const char* VAULT_HEADER_V1 = "---vault-v1---\n";
+    static constexpr const char* VAULT_HEADER_V2 = VAULT_HEADER;
 
 private:
     struct LockState {
@@ -68,6 +72,7 @@ private:
 
     uint8_t _key[32];
     UnlockResult _lastUnlockResult = UnlockResult::Error;
+    uint8_t _legacyKey[32];
 
     // Load (or generate + save) the 16-byte PBKDF2 salt from NVS.
     // Returns true on success.
