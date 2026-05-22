@@ -37,4 +37,6 @@ private:
     static constexpr uint8_t BOX_GAP   = 20; // gap between boxes
 
     void _render(const uint8_t digits[PIN_LEN], uint8_t cursor);
+    void _showFeedback(const char* line1, const char* line2, uint16_t delayMs);
+    void _formatRetryAfter(uint32_t retryAfterSeconds, char* out, size_t len) const;
 };

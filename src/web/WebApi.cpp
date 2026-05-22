@@ -274,6 +274,12 @@ void WebApi::_registerVaultRoutes() {
                [this](AsyncWebServerRequest* req) {
         JsonDocument doc;
         doc["locked"] = !_vault.isUnlocked();
+        doc["unlock_locked_out"] = _vault.isUnlockLockedOut();
+        doc["failed_attempts"] = _vault.failedUnlockAttempts();
+        if (_vault.isUnlockLockedOut()) {
+            doc["error"] = "vault_locked";
+            doc["retry_after"] = _vault.unlockRetryAfterSeconds();
+        }
         String body;
         serializeJson(doc, body);
         req->send(200, "application/json", body);
@@ -307,8 +313,37 @@ void WebApi::_registerVaultRoutes() {
         if (_vault.deriveKeyFromPin(pin)) {
             req->send(200, "application/json", "{\"ok\":true}");
         } else {
-            req->send(500, "application/json",
-                      "{\"ok\":false,\"error\":\"key derivation failed\"}");
+            JsonDocument resp;
+            resp["ok"] = false;
+            resp["failed_attempts"] = _vault.failedUnlockAttempts();
+
+            switch (_vault.lastUnlockResult()) {
+            case VaultManager::UnlockResult::LockedOut: {
+                uint32_t retryAfter = _vault.unlockRetryAfterSeconds();
+                resp["error"] = "vault_locked";
+                resp["retry_after"] = retryAfter;
+
+                String body;
+                serializeJson(resp, body);
+                auto* response = req->beginResponse(429, "application/json", body);
+                response->addHeader("Retry-After", String(retryAfter).c_str());
+                req->send(response);
+                return;
+            }
+            case VaultManager::UnlockResult::InvalidPin:
+                resp["error"] = "invalid_pin";
+                break;
+            default:
+                resp["error"] = "key_derivation_failed";
+                break;
+            }
+
+            String body;
+            serializeJson(resp, body);
+            int statusCode = (_vault.lastUnlockResult() == VaultManager::UnlockResult::InvalidPin)
+                                 ? 401
+                                 : 500;
+            req->send(statusCode, "application/json", body);
         }
     });
 }

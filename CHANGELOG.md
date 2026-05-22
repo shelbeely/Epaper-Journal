@@ -12,6 +12,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Journal entry saves are now atomic: writes go to a sibling `.tmp` file first and are renamed into place only after a successful write.
 - On boot, stale orphaned journal `.tmp` files are cleaned up from month directories.
 
+### Security
+- Added NVS-backed vault PIN lockout tracking with escalating 30 second, 5 minute, and 1 hour back-off windows after repeated failed unlock attempts.
+- `/api/vault/unlock` now returns HTTP 429 with `Retry-After` when the vault is temporarily locked and reports the remaining wait time.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
