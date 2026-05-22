@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Native unit tests covering VaultManager encryption/key derivation and OtaManager boot-state safety behavior.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
