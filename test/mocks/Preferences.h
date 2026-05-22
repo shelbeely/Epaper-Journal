@@ -75,7 +75,8 @@ private:
 
     // All instances in a test binary share one backing store so that
     // begin()/end()/re-open() behaves like NVS within the same test run.
-    static std::map<std::string, std::vector<uint8_t>> _store;
+    static std::map<std::string, std::vector<uint8_t>> _bytesStore;
+    static std::map<std::string, uint32_t> _uintStore;
 };
 
 inline std::map<std::string, std::vector<uint8_t>> Preferences::_store;

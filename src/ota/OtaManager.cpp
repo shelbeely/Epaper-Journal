@@ -50,6 +50,7 @@ bool OtaManager::onBoot() {
 void OtaManager::markBootHealthy() {
     if (_pendingVerify) {
         esp_ota_mark_app_valid_cancel_rollback();
+        _pendingVerify = false;
         X4_LOG(X4M_OTA_MARK_VALID);
     }
     // Reset crash-loop counter
