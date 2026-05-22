@@ -8,6 +8,7 @@
 
 #include "Arduino.h"
 #include "SdFat.h"
+#include <map>
 #include <vector>
 #include <string>
 
@@ -22,13 +23,15 @@ public:
     static bool _stubEnsureDir;       // return value for ensureDirectoryExists()
     static bool _stubWrite;           // return value for writeFile()
     static String _stubReadContent;   // return value for readFile()
+    static std::map<std::string, std::vector<String>> _stubListFiles;
 
     bool begin()        { return false; }
     bool ready() const  { return _stubReady; }
 
-    std::vector<String> listFiles(const char* /*path*/ = "/",
+    std::vector<String> listFiles(const char* path = "/",
                                   int /*maxFiles*/     = 200) {
-        return {};
+        auto it = _stubListFiles.find(path ? path : "/");
+        return (it == _stubListFiles.end()) ? std::vector<String>{} : it->second;
     }
     String readFile(const char* /*path*/) { return _stubReadContent; }
     bool   readFileToStream(const char* /*path*/, Print& /*out*/,
@@ -81,6 +84,7 @@ inline bool   SDCardManager::_stubReady        = false;
 inline bool   SDCardManager::_stubEnsureDir    = false;
 inline bool   SDCardManager::_stubWrite        = false;
 inline String SDCardManager::_stubReadContent;
+inline std::map<std::string, std::vector<String>> SDCardManager::_stubListFiles;
 
 // Match the macro from the real SDCardManager.h
 #define SdMan SDCardManager::getInstance()

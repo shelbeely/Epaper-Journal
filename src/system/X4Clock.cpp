@@ -4,15 +4,20 @@
 
 #include "X4Clock.h"
 #include <Preferences.h>
+#include <WiFi.h>
 #include "../config.h"
 #include "../diagnostics/X4Log.h"
 
-// NVS keys (re-use the x4sys namespace from config.h)
-static constexpr const char* NVS_KEY_EPOCH = "epoch";
+static constexpr const char* CLOCK_NAMESPACE = "system";
+static constexpr const char* NVS_KEY_EPOCH = "last_epoch";
+static constexpr uint32_t MIN_REASONABLE_EPOCH = 1704067200UL;  // 2024-01-01 UTC
+static constexpr uint32_t SYNC_INTERVAL_MS = 3600000UL;
 
 X4Clock::X4Clock() {}
 
 bool X4Clock::sync(uint32_t timeoutMs) {
+    _hasSyncAttempt = true;
+    _lastSyncAttemptMs = millis();
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     uint32_t start = millis();
     while (!_isTimeSet() && (millis() - start) < timeoutMs) {
@@ -20,13 +25,24 @@ bool X4Clock::sync(uint32_t timeoutMs) {
     }
     _synced = _isTimeSet();
     if (_synced) {
-        _saveToNvs();
+        uint32_t epoch = (uint32_t)time(nullptr);
+        _lastSyncSuccessMs = millis();
+        _saveToNvs(epoch);
         X4_LOG("CLOCK_SYNCED");
     } else {
-        _loadFromNvs();
+        _loadFromNvs(true);
         X4_LOG("CLOCK_NTP_FAILED");
     }
     return _synced;
+}
+
+bool X4Clock::syncIfNeeded(uint32_t timeoutMs) {
+    if (WiFi.status() != WL_CONNECTED) return false;
+    uint32_t lastReferenceMs = _synced ? _lastSyncSuccessMs : _lastSyncAttemptMs;
+    if (_hasSyncAttempt && (millis() - lastReferenceMs) < SYNC_INTERVAL_MS) {
+        return false;
+    }
+    return sync(timeoutMs);
 }
 
 struct tm X4Clock::now() const {
@@ -60,29 +76,67 @@ void X4Clock::currentYearMonth(uint16_t& year, uint8_t& month) const {
     month = (uint8_t)(t.tm_mon + 1);
 }
 
+uint16_t X4Clock::effectiveCurrentYear() {
+    uint16_t year;
+    uint8_t month;
+    currentYearMonth(year, month);
+
+    uint16_t persistedYear = _persistedYear();
+    return persistedYear > year ? persistedYear : year;
+}
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 bool X4Clock::_isTimeSet() const {
-    // time() returns seconds since epoch; consider set if > year 2020
-    return time(nullptr) > 1577836800L; // 2020-01-01 00:00:00 UTC
+    return time(nullptr) >= (time_t)MIN_REASONABLE_EPOCH;
 }
 
-void X4Clock::_saveToNvs() const {
+void X4Clock::_saveToNvs(uint32_t epoch) {
     Preferences prefs;
-    prefs.begin(NVS_NAMESPACE, false);
-    prefs.putUInt(NVS_KEY_EPOCH, (uint32_t)time(nullptr));
+    prefs.begin(CLOCK_NAMESPACE, false);
+    prefs.putUInt(NVS_KEY_EPOCH, epoch);
     prefs.end();
+    _persistedEpoch = epoch;
+    _persistedEpochLoaded = true;
 }
 
-void X4Clock::_loadFromNvs() {
+bool X4Clock::_loadFromNvs(bool applyToClock) {
+    if (_persistedEpochLoaded && _persistedEpoch >= MIN_REASONABLE_EPOCH) {
+        if (applyToClock) {
+            struct timeval tv = { (time_t)_persistedEpoch, 0 };
+            settimeofday(&tv, nullptr);
+            X4_LOGF("CLOCK_NVS_RESTORE", "epoch=%u", _persistedEpoch);
+        }
+        return true;
+    }
+
     Preferences prefs;
-    prefs.begin(NVS_NAMESPACE, true);
+    prefs.begin(CLOCK_NAMESPACE, true);
     uint32_t savedEpoch = prefs.getUInt(NVS_KEY_EPOCH, 0);
     prefs.end();
 
-    if (savedEpoch > 1577836800UL) {
-        struct timeval tv = { (time_t)savedEpoch, 0 };
-        settimeofday(&tv, nullptr);
-        X4_LOGF("CLOCK_NVS_RESTORE", "epoch=%u", savedEpoch);
+    _persistedEpoch = savedEpoch;
+    _persistedEpochLoaded = true;
+
+    if (savedEpoch >= MIN_REASONABLE_EPOCH) {
+        if (applyToClock) {
+            _synced = false;
+            _lastSyncSuccessMs = 0;
+            struct timeval tv = { (time_t)savedEpoch, 0 };
+            settimeofday(&tv, nullptr);
+            X4_LOGF("CLOCK_NVS_RESTORE", "epoch=%u", savedEpoch);
+        }
+        return true;
     }
+
+    return false;
+}
+
+uint16_t X4Clock::_persistedYear() {
+    if (!_loadFromNvs(false)) return 0;
+
+    time_t t = (time_t)_persistedEpoch;
+    struct tm info;
+    localtime_r(&t, &info);
+    return (uint16_t)(info.tm_year + 1900);
 }

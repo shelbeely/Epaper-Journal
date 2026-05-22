@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- Retry NTP sync hourly while Wi-Fi is connected, persist the last-known-good epoch, and reuse it to keep journal entries visible after clock drift or failed sync.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

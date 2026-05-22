@@ -32,15 +32,53 @@ using std::int32_t;
 using std::int64_t;
 using std::size_t;
 
+// ── Mockable wall-clock helpers ───────────────────────────────────────────────
+inline uint32_t gMockMillis = 0;
+inline time_t   gMockUnixTime = 0;
+inline uint32_t gMockUnixTimeSetAtMillis = 0;
+inline time_t   gMockConfigTimeEpoch = 0;
+
+inline time_t mock_time(time_t* out = nullptr) {
+    time_t now = gMockUnixTime + (time_t)((gMockMillis - gMockUnixTimeSetAtMillis) / 1000U);
+    if (out) *out = now;
+    return now;
+}
+
+inline int mock_settimeofday(const struct timeval* tv, const struct timezone* /*tz*/) {
+    gMockUnixTime = tv ? tv->tv_sec : 0;
+    gMockUnixTimeSetAtMillis = gMockMillis;
+    return 0;
+}
+
+inline tm* mock_localtime_r(const time_t* timer, tm* result) {
+    if (!timer || !result) return nullptr;
+    std::tm* tmp = std::gmtime(timer);
+    if (!tmp) return nullptr;
+    *result = *tmp;
+    return result;
+}
+
+#define time mock_time
+#define settimeofday mock_settimeofday
+#define localtime_r mock_localtime_r
+
 // ── Timing stubs ──────────────────────────────────────────────────────────────
-inline uint32_t millis() { return 0; }
-inline void     delay(uint32_t) {}
+inline uint32_t millis() { return gMockMillis; }
+inline void     delay(uint32_t ms) { gMockMillis += ms; }
+inline void     setMockMillis(uint32_t ms) { gMockMillis = ms; }
+inline void     advanceMockMillis(uint32_t ms) { gMockMillis += ms; }
+inline void     setMockConfigTimeEpoch(time_t epoch) { gMockConfigTimeEpoch = epoch; }
 
 // ── NTP / SNTP stub ───────────────────────────────────────────────────────────
 inline void configTime(long /*gmtOffset*/, int /*daylightOffset*/,
                        const char* /*server1*/,
                        const char* /*server2*/ = nullptr,
-                       const char* /*server3*/ = nullptr) {}
+                       const char* /*server3*/ = nullptr) {
+    if (gMockConfigTimeEpoch > 0) {
+        struct timeval tv = { gMockConfigTimeEpoch, 0 };
+        settimeofday(&tv, nullptr);
+    }
+}
 
 // ── Minimal Print base (needed for SDCardManager::readFileToStream) ───────────
 class Print {

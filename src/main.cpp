@@ -181,12 +181,15 @@ void setup() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void loop() {
-    // Battery refresh every 30 seconds
-    static uint32_t lastBatRead = 0;
-    if (BATTERY_ADC_PIN != 0 && millis() - lastBatRead > 30000) {
-        gDiag.batteryPercent = gBattery.readPercentage();
-        gDiag.batteryMv      = gBattery.readMillivolts();
-        lastBatRead = millis();
+    // Periodic background maintenance every 30 seconds
+    static uint32_t lastPeriodicCheck = 0;
+    if (millis() - lastPeriodicCheck > 30000) {
+        if (BATTERY_ADC_PIN != 0) {
+            gDiag.batteryPercent = gBattery.readPercentage();
+            gDiag.batteryMv      = gBattery.readMillivolts();
+        }
+        gClock.syncIfNeeded();
+        lastPeriodicCheck = millis();
     }
 
     // Run the browse screen (blocks until user selects or presses Back)

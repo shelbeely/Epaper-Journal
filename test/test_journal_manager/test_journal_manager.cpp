@@ -24,7 +24,25 @@
 
 #include <unity.h>
 
-void setUp(void)    {}
+static void setTestEpoch(time_t epoch) {
+    struct timeval tv = { epoch, 0 };
+    settimeofday(&tv, nullptr);
+}
+
+void setUp(void) {
+    setenv("TZ", "UTC", 1);
+    tzset();
+    Preferences::reset();
+    SDCardManager::_stubReady = false;
+    SDCardManager::_stubEnsureDir = false;
+    SDCardManager::_stubWrite = false;
+    SDCardManager::_stubReadContent = "";
+    SDCardManager::_stubListFiles.clear();
+    setMockMillis(0);
+    setMockConfigTimeEpoch(0);
+    setTestEpoch(0);
+}
+
 void tearDown(void) {}
 
 // ── labelFromFilename ─────────────────────────────────────────────────────────
@@ -109,6 +127,30 @@ void test_list_all_paths_empty_no_files(void) {
     SDCardManager::_stubReady = false;
 }
 
+// When the RTC is behind but a newer persisted epoch exists, listAllPaths must
+// still scan far enough ahead to include recent entries.
+void test_list_all_paths_uses_persisted_year_floor(void) {
+    Preferences prefs;
+    prefs.begin("system", false);
+    prefs.putUInt("last_epoch", 1779235200UL);  // 2026-05-19 00:00:00 UTC
+    prefs.end();
+
+    setTestEpoch(1704067200UL);  // 2024-01-01 00:00:00 UTC
+    SDCardManager::_stubReady = true;
+    SDCardManager::_stubListFiles["/journal/2026/05/"] = {
+        "20260520-103000.md"
+    };
+
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+    auto paths = jm.listAllPaths();
+
+    TEST_ASSERT_EQUAL(1, (int)paths.size());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260520-103000.md",
+                             paths[0].c_str());
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -124,6 +166,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_label_filename_no_extension);
     RUN_TEST(test_list_all_paths_empty_when_not_ready);
     RUN_TEST(test_list_all_paths_empty_no_files);
+    RUN_TEST(test_list_all_paths_uses_persisted_year_floor);
 
     return UNITY_END();
 }
