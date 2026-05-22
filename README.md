@@ -35,7 +35,7 @@ Key capabilities:
 - **Web companion** — soft-AP web editor and HTTP API for editing entries, export, and OTA management from a browser
 - **OTA & recovery** — over-the-air firmware updates with automatic rollback and crash-loop safe-mode
 
-> 📸 _Use `python3 tools/serve_ui.py` to preview the web UI locally. See [Off-device UI preview](docs/building.md#off-device-ui-preview) in the building guide._
+> 📸 _Screenshots and a demo GIF will be added here once hardware photos are available._
 
 ---
 
