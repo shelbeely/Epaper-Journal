@@ -5,6 +5,9 @@
 #include "WebApi.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <memory>
+#include <time.h>
+#include <vector>
 #include "../config.h"
 #include "../journal/JournalManager.h"
 #include "../journal/JournalFrontmatter.h"
@@ -22,6 +25,245 @@ String LogRingBuffer::toJson() const {
     serializeJson(doc, out);
     return out;
 }
+
+namespace {
+
+struct ZipExportEntry {
+    String path;
+    String zipName;
+    uint32_t crc32 = 0;
+    uint32_t size = 0;
+    uint32_t localOffset = 0;
+    uint16_t modTime = 0;
+    uint16_t modDate = 0;
+    std::vector<uint8_t> localHeader;
+};
+
+static uint32_t _crc32ForBytes(const uint8_t* data, size_t len) {
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 0; bit < 8; ++bit) {
+            crc = (crc & 1u) ? ((crc >> 1) ^ 0xEDB88320u) : (crc >> 1);
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+static void _appendLe16(std::vector<uint8_t>& out, uint16_t value) {
+    out.push_back((uint8_t)(value & 0xFF));
+    out.push_back((uint8_t)((value >> 8) & 0xFF));
+}
+
+static void _appendLe32(std::vector<uint8_t>& out, uint32_t value) {
+    out.push_back((uint8_t)(value & 0xFF));
+    out.push_back((uint8_t)((value >> 8) & 0xFF));
+    out.push_back((uint8_t)((value >> 16) & 0xFF));
+    out.push_back((uint8_t)((value >> 24) & 0xFF));
+}
+
+static void _appendString(std::vector<uint8_t>& out, const String& value) {
+    for (size_t i = 0; i < value.length(); ++i) {
+        out.push_back((uint8_t)value[i]);
+    }
+}
+
+static void _currentZipDateTime(uint16_t& outDate, uint16_t& outTime) {
+    time_t now = time(nullptr);
+    struct tm tmNow {};
+    if (now > 0 && localtime_r(&now, &tmNow)) {
+        int year = tmNow.tm_year + 1900;
+        if (year < 1980) year = 1980;
+        outDate = (uint16_t)(((year - 1980) << 9) |
+                             ((tmNow.tm_mon + 1) << 5) |
+                             tmNow.tm_mday);
+        outTime = (uint16_t)((tmNow.tm_hour << 11) |
+                             (tmNow.tm_min << 5) |
+                             (tmNow.tm_sec / 2));
+        return;
+    }
+    outDate = (uint16_t)(((1980 - 1980) << 9) | (1 << 5) | 1);
+    outTime = 0;
+}
+
+static String _backupArchiveFilename() {
+    time_t now = time(nullptr);
+    struct tm tmNow {};
+    char stamp[16];
+    if (now > 0 && localtime_r(&now, &tmNow)) {
+        snprintf(stamp, sizeof(stamp), "%04d%02d%02d",
+                 tmNow.tm_year + 1900, tmNow.tm_mon + 1, tmNow.tm_mday);
+    } else {
+        strncpy(stamp, "19700101", sizeof(stamp));
+        stamp[sizeof(stamp) - 1] = '\0';
+    }
+    return "journal-backup-" + String(stamp) + ".zip";
+}
+
+static std::vector<uint8_t> _buildLocalHeader(const ZipExportEntry& entry) {
+    std::vector<uint8_t> out;
+    out.reserve(30 + entry.zipName.length());
+    _appendLe32(out, 0x04034B50u);
+    _appendLe16(out, 20);
+    _appendLe16(out, 1u << 11); // UTF-8 filenames
+    _appendLe16(out, 0);        // stored (no compression)
+    _appendLe16(out, entry.modTime);
+    _appendLe16(out, entry.modDate);
+    _appendLe32(out, entry.crc32);
+    _appendLe32(out, entry.size);
+    _appendLe32(out, entry.size);
+    _appendLe16(out, (uint16_t)entry.zipName.length());
+    _appendLe16(out, 0);
+    _appendString(out, entry.zipName);
+    return out;
+}
+
+struct ZipExportState {
+    JournalManager& jm;
+    bool rawEncrypted;
+    std::vector<ZipExportEntry> entries;
+    std::vector<uint8_t> centralDirectory;
+    std::vector<uint8_t> footer;
+    String cachedContent;
+    size_t cachedIndex = SIZE_MAX;
+    size_t totalSize = 0;
+
+    ZipExportState(JournalManager& journalManager, bool encrypted)
+        : jm(journalManager), rawEncrypted(encrypted) {}
+
+    bool prepare() {
+        auto paths = jm.listAllPaths();
+        uint16_t zipDate = 0;
+        uint16_t zipTime = 0;
+        _currentZipDateTime(zipDate, zipTime);
+
+        entries.reserve(paths.size());
+        for (auto& path : paths) {
+            String content;
+            if (!jm.readEntryForExport(path, content, rawEncrypted)) continue;
+
+            ZipExportEntry entry;
+            entry.path = path;
+            entry.zipName = path.startsWith("/") ? path.substring(1) : path;
+            entry.size = (uint32_t)content.length();
+            entry.crc32 = _crc32ForBytes(
+                reinterpret_cast<const uint8_t*>(content.c_str()), content.length());
+            entry.modDate = zipDate;
+            entry.modTime = zipTime;
+            entries.push_back(entry);
+        }
+
+        uint32_t offset = 0;
+        for (auto& entry : entries) {
+            entry.localOffset = offset;
+            entry.localHeader = _buildLocalHeader(entry);
+            offset += (uint32_t)entry.localHeader.size() + entry.size;
+        }
+
+        centralDirectory.clear();
+        for (const auto& entry : entries) {
+            _appendLe32(centralDirectory, 0x02014B50u);
+            _appendLe16(centralDirectory, 20);
+            _appendLe16(centralDirectory, 20);
+            _appendLe16(centralDirectory, 1u << 11);
+            _appendLe16(centralDirectory, 0);
+            _appendLe16(centralDirectory, entry.modTime);
+            _appendLe16(centralDirectory, entry.modDate);
+            _appendLe32(centralDirectory, entry.crc32);
+            _appendLe32(centralDirectory, entry.size);
+            _appendLe32(centralDirectory, entry.size);
+            _appendLe16(centralDirectory, (uint16_t)entry.zipName.length());
+            _appendLe16(centralDirectory, 0);
+            _appendLe16(centralDirectory, 0);
+            _appendLe16(centralDirectory, 0);
+            _appendLe16(centralDirectory, 0);
+            _appendLe32(centralDirectory, 0);
+            _appendLe32(centralDirectory, entry.localOffset);
+            _appendString(centralDirectory, entry.zipName);
+        }
+
+        footer.clear();
+        _appendLe32(footer, 0x06054B50u);
+        _appendLe16(footer, 0);
+        _appendLe16(footer, 0);
+        _appendLe16(footer, (uint16_t)entries.size());
+        _appendLe16(footer, (uint16_t)entries.size());
+        _appendLe32(footer, (uint32_t)centralDirectory.size());
+        _appendLe32(footer, offset);
+        _appendLe16(footer, 0);
+
+        totalSize = offset + centralDirectory.size() + footer.size();
+        return true;
+    }
+
+    const String& _contentForEntry(size_t entryIndex) {
+        if (cachedIndex != entryIndex) {
+            cachedContent = "";
+            (void)jm.readEntryForExport(entries[entryIndex].path, cachedContent, rawEncrypted);
+            cachedIndex = entryIndex;
+        }
+        return cachedContent;
+    }
+
+    size_t fill(uint8_t* buffer, size_t maxLen, size_t index) {
+        if (!buffer || maxLen == 0 || index >= totalSize) return 0;
+
+        size_t written = 0;
+        size_t cursor = index;
+        while (written < maxLen && cursor < totalSize) {
+            bool matchedEntry = false;
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto& entry = entries[i];
+                size_t headerStart = entry.localOffset;
+                size_t headerEnd = headerStart + entry.localHeader.size();
+                size_t dataEnd = headerEnd + entry.size;
+                if (cursor >= dataEnd) continue;
+
+                matchedEntry = true;
+                if (cursor < headerEnd) {
+                    size_t segmentOffset = cursor - headerStart;
+                    size_t available = entry.localHeader.size() - segmentOffset;
+                    size_t toCopy = std::min(maxLen - written, available);
+                    memcpy(buffer + written, entry.localHeader.data() + segmentOffset, toCopy);
+                    written += toCopy;
+                    cursor += toCopy;
+                } else {
+                    const String& content = _contentForEntry(i);
+                    size_t segmentOffset = cursor - headerEnd;
+                    size_t available = content.length() - segmentOffset;
+                    size_t toCopy = std::min(maxLen - written, available);
+                    memcpy(buffer + written, content.c_str() + segmentOffset, toCopy);
+                    written += toCopy;
+                    cursor += toCopy;
+                }
+                break;
+            }
+            if (matchedEntry) continue;
+
+            size_t centralOffset = totalSize - centralDirectory.size() - footer.size();
+            size_t footerOffset = totalSize - footer.size();
+            if (cursor < footerOffset) {
+                size_t segmentOffset = cursor - centralOffset;
+                size_t available = centralDirectory.size() - segmentOffset;
+                size_t toCopy = std::min(maxLen - written, available);
+                memcpy(buffer + written, centralDirectory.data() + segmentOffset, toCopy);
+                written += toCopy;
+                cursor += toCopy;
+            } else {
+                size_t segmentOffset = cursor - footerOffset;
+                size_t available = footer.size() - segmentOffset;
+                size_t toCopy = std::min(maxLen - written, available);
+                memcpy(buffer + written, footer.data() + segmentOffset, toCopy);
+                written += toCopy;
+                cursor += toCopy;
+            }
+        }
+
+        return written;
+    }
+};
+
+} // namespace
 
 // ── WebApi ────────────────────────────────────────────────────────────────────
 
@@ -426,6 +668,7 @@ void WebApi::_registerDevRoutes() {
 // GET /manifest.json       — PWA Web App Manifest
 // GET /sw.js               — minimal service worker (offline cache)
 // GET /api/export/all      — JSON array of every entry across all months
+// GET /api/journal/export  — ZIP archive of all entries
 //
 // These routes are always available regardless of build configuration.
 
@@ -492,6 +735,28 @@ void WebApi::_registerExportRoutes() {
         auto* resp = req->beginResponse(200, "application/javascript",
                                          String(FPSTR(SERVICE_WORKER)));
         resp->addHeader("Service-Worker-Allowed", "/");
+        req->send(resp);
+    });
+
+    // GET /api/journal/export[?encrypted=1] — ZIP archive of all entries
+    _server.on("/api/journal/export", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        bool encrypted = req->hasParam("encrypted") &&
+                         req->getParam("encrypted")->value() == "1";
+
+        auto state = std::make_shared<ZipExportState>(_jm, encrypted);
+        if (!state->prepare()) {
+            req->send(500, "text/plain", "export failed");
+            return;
+        }
+
+        AsyncWebServerResponse* resp = req->beginResponse(
+            "application/zip",
+            state->totalSize,
+            [state](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+                return state->fill(buffer, maxLen, index);
+            });
+        resp->addHeader("Content-Disposition",
+                        "attachment; filename=\"" + _backupArchiveFilename() + "\"");
         req->send(resp);
     });
 

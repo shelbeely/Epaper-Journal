@@ -24,7 +24,12 @@
 
 #include <unity.h>
 
-void setUp(void)    {}
+void setUp(void) {
+    SDCardManager::_stubReady = false;
+    SDCardManager::_stubEnsureDir = false;
+    SDCardManager::_stubWrite = false;
+    SDCardManager::_stubReadContent = String("");
+}
 void tearDown(void) {}
 
 // ── labelFromFilename ─────────────────────────────────────────────────────────
@@ -109,6 +114,74 @@ void test_list_all_paths_empty_no_files(void) {
     SDCardManager::_stubReady = false;
 }
 
+// ── readEntryForExport ─────────────────────────────────────────────────────────
+
+void test_read_entry_for_export_plaintext_returns_raw_content(void) {
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+    String out;
+    String expected = "---\ntitle: Plain\ndate: 2026-05-22 01:00:00\n---\nHello\n";
+    SDCardManager::_stubReadContent = expected;
+
+    bool ok = jm.readEntryForExport("/journal/2026/05/plain.md", out, false);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING(expected.c_str(), out.c_str());
+}
+
+void test_read_entry_for_export_encrypted_stays_raw_when_locked(void) {
+    X4Storage storage;
+    X4Clock clock;
+    VaultManager vault;
+    TEST_ASSERT_TRUE(vault.deriveKeyFromPin("1234"));
+    String plaintext = "---\ntitle: Secret\ndate: 2026-05-22 01:00:00\n---\nHidden\n";
+    String encrypted = vault.encrypt(plaintext);
+    vault.lock();
+    JournalManager jm(storage, clock, &vault);
+    String out;
+    SDCardManager::_stubReadContent = encrypted;
+
+    bool ok = jm.readEntryForExport("/journal/2026/05/secret.md", out, false);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING(encrypted.c_str(), out.c_str());
+}
+
+void test_read_entry_for_export_encrypted_decrypts_when_unlocked(void) {
+    X4Storage storage;
+    X4Clock clock;
+    VaultManager vault;
+    TEST_ASSERT_TRUE(vault.deriveKeyFromPin("1234"));
+    String plaintext = "---\ntitle: Secret\ndate: 2026-05-22 01:00:00\n---\nHidden\n";
+    String encrypted = vault.encrypt(plaintext);
+    JournalManager jm(storage, clock, &vault);
+    String out;
+    SDCardManager::_stubReadContent = encrypted;
+
+    bool ok = jm.readEntryForExport("/journal/2026/05/secret.md", out, false);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING(plaintext.c_str(), out.c_str());
+}
+
+void test_read_entry_for_export_forced_raw_keeps_ciphertext(void) {
+    X4Storage storage;
+    X4Clock clock;
+    VaultManager vault;
+    TEST_ASSERT_TRUE(vault.deriveKeyFromPin("1234"));
+    String plaintext = "---\ntitle: Secret\ndate: 2026-05-22 01:00:00\n---\nHidden\n";
+    String encrypted = vault.encrypt(plaintext);
+    JournalManager jm(storage, clock, &vault);
+    String out;
+    SDCardManager::_stubReadContent = encrypted;
+
+    bool ok = jm.readEntryForExport("/journal/2026/05/secret.md", out, true);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING(encrypted.c_str(), out.c_str());
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -124,6 +197,10 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_label_filename_no_extension);
     RUN_TEST(test_list_all_paths_empty_when_not_ready);
     RUN_TEST(test_list_all_paths_empty_no_files);
+    RUN_TEST(test_read_entry_for_export_plaintext_returns_raw_content);
+    RUN_TEST(test_read_entry_for_export_encrypted_stays_raw_when_locked);
+    RUN_TEST(test_read_entry_for_export_encrypted_decrypts_when_unlocked);
+    RUN_TEST(test_read_entry_for_export_forced_raw_keeps_ciphertext);
 
     return UNITY_END();
 }

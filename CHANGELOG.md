@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- ZIP-based journal backup export at `/api/journal/export`, including a raw encrypted mode for vault entries.
+- Web UI **Export All** download button plus backup/restore workflow documentation.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
