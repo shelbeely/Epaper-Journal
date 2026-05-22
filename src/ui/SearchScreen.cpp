@@ -166,7 +166,7 @@ void SearchScreen::_renderQuery(const uint8_t slots[QUERY_LEN], uint8_t cursor) 
     uint16_t dispH = _display.height();
     String query = _queryFromSlots(slots);
 
-    memset(fb, 0xFF, (dispW / 8) * dispH);
+    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
 
     _display.drawText(fb, 4, 4, "SEARCH", false, SCALE);
     _display.drawText(fb, 4, 26, "UP/DN:char  LR:move  CONFIRM:search  BACK:cancel", false, 1);
@@ -209,7 +209,7 @@ void SearchScreen::_renderResults(const String& query,
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
 
-    memset(fb, 0xFF, (dispW / 8) * dispH);
+    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
 
     _display.drawText(fb, 4, 4, "SEARCH", false, SCALE);
     String prompt = "Q: " + query;
