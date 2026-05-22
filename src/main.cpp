@@ -178,14 +178,15 @@ void setup() {
 
     // ── Display init ───────────────────────────────────────────────────────
     if (gDisplay.init()) {
-        uint8_t* fb = gDisplay.getFrameBuffer();
-        memset(fb, 0xFF, (gDisplay.width() / 8) * gDisplay.height()); // clear white
+        gDisplay.clearFrameGrayscale();
         if (gSafeModeActive) {
-            gDisplay.drawText(fb, 10, 20, "SAFE MODE", false, 2);
+            gDisplay.drawTextGray(10, 20, "SAFE MODE",
+                                  GrayLevel::BLACK, GrayLevel::WHITE, 2);
         } else {
-            gDisplay.drawText(fb, 10, 20, "JOURNAL", false, 2);
+            gDisplay.drawTextGray(10, 20, "JOURNAL",
+                                  GrayLevel::BLACK, GrayLevel::WHITE, 2);
         }
-        gDisplay.fullRefresh();
+        gDisplay.displayGrayscale();
     }
     gDiag.display = gDisplay.status();
 
@@ -197,6 +198,8 @@ void setup() {
         gStorage.init();
         gDiag.storageReady = gStorage.ready();
         gJournalMgr.begin();
+        gSleepScreen.loadConfig();
+        gSleepScreen.setThemeScreen(&gThemeScreen);
     }
 
     // ── Battery ───────────────────────────────────────────────────────────

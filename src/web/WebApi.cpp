@@ -4,6 +4,7 @@
 
 #include "WebApi.h"
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <array>
 #include <memory>
@@ -457,6 +458,7 @@ void WebApi::begin() {
     _registerVaultRoutes();
     _registerWifiProvisioningRoutes();
     _registerExportRoutes();
+    _registerSleepRoutes();
 #if CONFIG_X4_DIAG_HTTP_API
     _registerDevRoutes();
 #endif
@@ -511,47 +513,115 @@ void WebApi::_registerDisplayRoutes() {
         req->send(200, "application/json", out);
     });
 
-    // GET /api/display/screenshot.bmp — 1-bit BMP from framebuffer
+    // GET /api/display/screenshot.bmp — BMP from framebuffer
+    // Emits a 1-bit BMP in normal (1-bit) mode, or a 4-color 2bpp BMP when the
+    // last refresh was a grayscale refresh.  The 2bpp BMP always uses physical
+    // panel dimensions (800 × 480) since it reads both raw bit planes directly.
     _server.on("/api/display/screenshot.bmp", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (rejectWhenWifiDisabled(req)) return;
-        uint16_t w = _display.width();
-        uint16_t h = _display.height();
-        uint16_t rowBytes = (w + 7) / 8;
-        // BMP file: 14-byte file header + 40-byte DIB header
-        uint32_t dataSize   = rowBytes * h;
-        uint32_t fileSize   = 54 + 8 + dataSize; // +8 for 2-color palette
-        uint8_t* bmp = (uint8_t*)malloc(fileSize);
-        if (!bmp) { req->send(500, "text/plain", "OOM"); return; }
-        memset(bmp, 0, fileSize);
 
-        // File header
-        bmp[0] = 'B'; bmp[1] = 'M';
-        bmp[2] = fileSize & 0xFF; bmp[3] = (fileSize >> 8) & 0xFF;
-        bmp[4] = (fileSize >> 16) & 0xFF; bmp[5] = (fileSize >> 24) & 0xFF;
-        bmp[10] = 62; // pixel data offset = 54 + 8
+        if (_display.isGrayscale() && _display.getGrayPlane() != nullptr) {
+            // ── 2bpp grayscale BMP (physical 800 × 480) ──────────────────────
+            // Header layout: 14 (file) + 40 (DIB) + 16 (4-entry palette) = 70 bytes
+            static constexpr uint16_t PW = 800;
+            static constexpr uint16_t PH = 480;
+            static constexpr uint16_t ROW_STRIDE = PW / 4;  // 200 bytes, 4-byte aligned
+            uint32_t dataSize = (uint32_t)ROW_STRIDE * PH;  // 96000
+            uint32_t fileSize = 70 + dataSize;
+            uint8_t* bmp = (uint8_t*)malloc(fileSize);
+            if (!bmp) { req->send(500, "text/plain", "OOM"); return; }
+            memset(bmp, 0, fileSize);
 
-        // DIB header (BITMAPINFOHEADER)
-        bmp[14] = 40;
-        bmp[18] = w & 0xFF; bmp[19] = (w >> 8) & 0xFF;
-        // BMP height is negative for top-down
-        int32_t negH = -(int32_t)h;
-        memcpy(&bmp[22], &negH, 4);
-        bmp[26] = 1; bmp[27] = 0;  // color planes
-        bmp[28] = 1; bmp[29] = 0;  // bits per pixel
-        bmp[34] = dataSize & 0xFF; bmp[35] = (dataSize >> 8) & 0xFF;
+            // File header
+            bmp[0] = 'B'; bmp[1] = 'M';
+            bmp[2] = fileSize & 0xFF; bmp[3] = (fileSize >> 8) & 0xFF;
+            bmp[4] = (fileSize >> 16) & 0xFF; bmp[5] = (fileSize >> 24) & 0xFF;
+            bmp[10] = 70;  // pixel data offset
 
-        // Color table: index 0 = black, index 1 = white
-        bmp[54] = 0x00; bmp[55] = 0x00; bmp[56] = 0x00; bmp[57] = 0x00;
-        bmp[58] = 0xFF; bmp[59] = 0xFF; bmp[60] = 0xFF; bmp[61] = 0x00;
+            // DIB header (BITMAPINFOHEADER)
+            bmp[14] = 40;
+            bmp[18] = PW & 0xFF; bmp[19] = (PW >> 8) & 0xFF;
+            int32_t negH = -(int32_t)PH;
+            memcpy(&bmp[22], &negH, 4);
+            bmp[26] = 1; bmp[27] = 0;   // color planes
+            bmp[28] = 2; bmp[29] = 0;   // bits per pixel = 2
+            bmp[34] = dataSize & 0xFF; bmp[35] = (dataSize >> 8) & 0xFF;
+            bmp[36] = (dataSize >> 16) & 0xFF;
 
-        // Pixel data — framebuffer is already 1bpp, 1=white 0=black
-        const uint8_t* fb = _display.getFrameBuffer();
-        memcpy(&bmp[62], fb, dataSize);
+            // Color table (BGRA, 4 bytes each):
+            // index 0 = BLACK, 1 = DARK_GRAY, 2 = LIGHT_GRAY, 3 = WHITE
+            bmp[54] = 0x00; bmp[55] = 0x00; bmp[56] = 0x00; bmp[57] = 0x00;
+            bmp[58] = 0x55; bmp[59] = 0x55; bmp[60] = 0x55; bmp[61] = 0x00;
+            bmp[62] = 0xAA; bmp[63] = 0xAA; bmp[64] = 0xAA; bmp[65] = 0x00;
+            bmp[66] = 0xFF; bmp[67] = 0xFF; bmp[68] = 0xFF; bmp[69] = 0x00;
 
-        AsyncWebServerResponse* resp = req->beginResponse_P(
-            200, "image/bmp", bmp, fileSize);
-        req->send(resp);
-        free(bmp);
+            // Pixel data — pack 4 pixels per byte (2bpp, MSB = leftmost pixel)
+            // shade = (bw_bit << 1) | red_bit → matches GrayLevel palette index
+            const uint8_t* fb = _display.getFrameBuffer();
+            const uint8_t* gp = _display.getGrayPlane();
+            static constexpr uint16_t W_BYTES = PW / 8;  // 100
+            uint8_t* dst = &bmp[70];
+            for (uint16_t py = 0; py < PH; py++) {
+                for (uint16_t px = 0; px < PW; px += 4) {
+                    uint8_t byte = 0;
+                    for (uint8_t k = 0; k < 4; k++) {
+                        uint16_t col     = px + k;
+                        uint16_t byteIdx = py * W_BYTES + col / 8u;
+                        uint8_t  bitMask = 0x80u >> (col % 8u);
+                        uint8_t  bwBit   = (fb[byteIdx] & bitMask) ? 1u : 0u;
+                        uint8_t  redBit  = (gp[byteIdx] & bitMask) ? 1u : 0u;
+                        uint8_t  shade   = (uint8_t)((bwBit << 1u) | redBit);
+                        byte |= (uint8_t)(shade << (6u - k * 2u));
+                    }
+                    *dst++ = byte;
+                }
+            }
+
+            AsyncWebServerResponse* resp = req->beginResponse_P(
+                200, "image/bmp", bmp, fileSize);
+            req->send(resp);
+            free(bmp);
+        } else {
+            // ── 1-bit BMP ─────────────────────────────────────────────────────
+            uint16_t w = _display.width();
+            uint16_t h = _display.height();
+            uint16_t rowBytes = (w + 7) / 8;
+            // BMP file: 14-byte file header + 40-byte DIB header
+            uint32_t dataSize   = rowBytes * h;
+            uint32_t fileSize   = 54 + 8 + dataSize; // +8 for 2-color palette
+            uint8_t* bmp = (uint8_t*)malloc(fileSize);
+            if (!bmp) { req->send(500, "text/plain", "OOM"); return; }
+            memset(bmp, 0, fileSize);
+
+            // File header
+            bmp[0] = 'B'; bmp[1] = 'M';
+            bmp[2] = fileSize & 0xFF; bmp[3] = (fileSize >> 8) & 0xFF;
+            bmp[4] = (fileSize >> 16) & 0xFF; bmp[5] = (fileSize >> 24) & 0xFF;
+            bmp[10] = 62; // pixel data offset = 54 + 8
+
+            // DIB header (BITMAPINFOHEADER)
+            bmp[14] = 40;
+            bmp[18] = w & 0xFF; bmp[19] = (w >> 8) & 0xFF;
+            // BMP height is negative for top-down
+            int32_t negH = -(int32_t)h;
+            memcpy(&bmp[22], &negH, 4);
+            bmp[26] = 1; bmp[27] = 0;  // color planes
+            bmp[28] = 1; bmp[29] = 0;  // bits per pixel
+            bmp[34] = dataSize & 0xFF; bmp[35] = (dataSize >> 8) & 0xFF;
+
+            // Color table: index 0 = black, index 1 = white
+            bmp[54] = 0x00; bmp[55] = 0x00; bmp[56] = 0x00; bmp[57] = 0x00;
+            bmp[58] = 0xFF; bmp[59] = 0xFF; bmp[60] = 0xFF; bmp[61] = 0x00;
+
+            // Pixel data — framebuffer is already 1bpp, 1=white 0=black
+            const uint8_t* fb = _display.getFrameBuffer();
+            memcpy(&bmp[62], fb, dataSize);
+
+            AsyncWebServerResponse* resp = req->beginResponse_P(
+                200, "image/bmp", bmp, fileSize);
+            req->send(resp);
+            free(bmp);
+        }
     });
 
     // POST /api/display/test-pattern  body: {"pattern":"checkerboard"}
@@ -1213,4 +1283,64 @@ void WebApi::_registerExportRoutes() {
         serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
+}
+
+// ── /api/sleep/* ──────────────────────────────────────────────────────────────
+
+void WebApi::_registerSleepRoutes() {
+    static constexpr const char* SLEEP_NS       = "sleep";
+    static constexpr const char* SLEEP_MODE_KEY = "mode";
+    static constexpr const char* SLEEP_PATH_KEY = "img_path";
+    static constexpr const char* SLEEP_DIR_KEY  = "img_dir";
+
+    // GET /api/sleep/config — return current sleep mode configuration
+    _server.on("/api/sleep/config", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
+        Preferences prefs;
+        prefs.begin(SLEEP_NS, true);
+        uint8_t mode = prefs.getUChar(SLEEP_MODE_KEY, 0);
+        String path  = prefs.getString(SLEEP_PATH_KEY, "");
+        String dir   = prefs.getString(SLEEP_DIR_KEY,  "/sleep");
+        prefs.end();
+
+        JsonDocument doc;
+        doc["mode"]     = mode;
+        doc["img_path"] = path;
+        doc["img_dir"]  = dir;
+
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // POST /api/sleep/config — update sleep mode configuration
+    // Body: { "mode": 0-3, "img_path": "/sleep/cover.bmp", "img_dir": "/sleep" }
+    _server.on("/api/sleep/config", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        nullptr,
+        [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            if (rejectWhenWifiDisabled(req)) return;
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+                req->send(400, "application/json", "{\"error\":\"bad_json\"}");
+                return;
+            }
+
+            Preferences prefs;
+            prefs.begin(SLEEP_NS, false);
+            if (doc["mode"].is<int>()) {
+                uint8_t m = (uint8_t)doc["mode"].as<int>();
+                if (m > 3) m = 0;
+                prefs.putUChar(SLEEP_MODE_KEY, m);
+            }
+            if (doc["img_path"].is<const char*>()) {
+                prefs.putString(SLEEP_PATH_KEY, doc["img_path"].as<const char*>());
+            }
+            if (doc["img_dir"].is<const char*>()) {
+                prefs.putString(SLEEP_DIR_KEY, doc["img_dir"].as<const char*>());
+            }
+            prefs.end();
+
+            req->send(200, "application/json", "{\"ok\":true}");
+        });
 }

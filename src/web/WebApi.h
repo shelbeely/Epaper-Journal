@@ -68,6 +68,7 @@ private:
     void _registerVaultRoutes();
     void _registerWifiProvisioningRoutes();
     void _registerExportRoutes();   // /api/export/* + /manifest.json + /sw.js
+    void _registerSleepRoutes();    // /api/sleep/config
 
 #if CONFIG_X4_DIAG_HTTP_API
     void _registerDevRoutes();

@@ -29,6 +29,29 @@
 // to revert to the built-in 5×7 font.  charAdvance(scale) / lineHeight(scale)
 // / glyphHeight(scale) return scaled metrics of the active font so that UI
 // screens remain orientation- and font-agnostic.
+//
+// 4-Level Grayscale
+// ─────────────────
+// The SSD1677 drives the GDEQ0426T82 (B/W only) panel with a custom LUT that
+// maps each of the four (BW-bit, RED-bit) RAM combinations to a distinct waveform,
+// producing four gray levels without any physical red ink:
+//
+//   GrayLevel  BW-bit  RED-bit  Appearance
+//   BLACK        0       0      Full black
+//   DARK_GRAY    0       1      Dark gray
+//   LIGHT_GRAY   1       0      Light gray
+//   WHITE        1       1      Full white
+//
+// The BW plane lives in the SDK framebuffer (CMD 0x24).  The RED plane is the
+// 48 KB `_grayPlane` member (CMD 0x26).  Gray drawing primitives write both
+// planes simultaneously.  Call clearFrameGrayscale() to reset both planes to
+// WHITE, then use the *Gray() variants of all draw methods, and finish with
+// displayGrayscale() to push both planes to hardware and trigger the refresh.
+//
+// A frame must use EITHER the 1-bit API (fillRect / drawChar / …) OR the
+// grayscale API (fillRectGray / drawCharGray / …) — mixing them within a
+// single frame produces undefined gray levels because the 1-bit API leaves
+// _grayPlane untouched.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <EInkDisplay.h>
@@ -51,6 +74,15 @@ enum class DisplayOrientation : uint8_t {
     PORTRAIT_CCW  = 2,  ///< Device rotated 90° CCW – left edge up,  logical 480×800
 };
 
+// ── 4-level gray shade ────────────────────────────────────────────────────────
+// Values encode (BW-bit<<1 | RED-bit), matching the SSD1677 LUT index directly.
+enum class GrayLevel : uint8_t {
+    BLACK      = 0,  ///< BW=0, RED=0 — full black
+    DARK_GRAY  = 1,  ///< BW=0, RED=1 — dark gray
+    LIGHT_GRAY = 2,  ///< BW=1, RED=0 — light gray
+    WHITE      = 3,  ///< BW=1, RED=1 — full white
+};
+
 class X4Display {
 public:
     X4Display();
@@ -68,6 +100,22 @@ public:
 
     // Clear the screen (fill white) and do a full refresh.
     void clear();
+
+    // ── Grayscale frame operations ───────────────────────────────────────────
+    /// Reset both the BW plane and the RED plane to WHITE.
+    /// Call at the start of every grayscale frame instead of memset(fb, 0xFF).
+    void clearFrameGrayscale();
+
+    /// Push both planes to hardware and trigger a grayscale (4-level) refresh.
+    /// Uses the SDK custom LUT sequence; always a full waveform cycle.
+    void displayGrayscale();
+
+    /// Returns true if the most recent refresh was a grayscale refresh.
+    /// Used by the screenshot endpoint to choose between 1bpp and 2bpp BMP.
+    bool isGrayscale() const { return _grayscaleActive; }
+
+    /// Raw access to the RED plane for screenshot export.
+    const uint8_t* getGrayPlane() const { return _grayPlane; }  // may be nullptr if init() failed
 
     // ── Power management ─────────────────────────────────────────────────────
     void sleep();
@@ -124,16 +172,46 @@ public:
     void fillRect(uint8_t* fb, uint16_t x, uint16_t y,
                   uint16_t w, uint16_t h, bool black);
 
-    // ── Diagnostics ──────────────────────────────────────────────────────────
+    // ── Grayscale font/fill rendering (writes BW + RED planes) ───────────────
+    /// Fill a rectangle with the given gray shade. Writes both planes.
+    void fillRectGray(uint16_t x, uint16_t y, uint16_t w, uint16_t h, GrayLevel shade);
+
+    /// Draw a character with independent foreground and background shade.
+    void drawCharGray(uint16_t x, uint16_t y, char c,
+                      GrayLevel fg, GrayLevel bg, uint8_t scale = 1);
+
+    /// Draw a string (single line) with foreground/background shade.
+    void drawTextGray(uint16_t x, uint16_t y, const char* str,
+                      GrayLevel fg, GrayLevel bg, uint8_t scale = 1);
+
+    /// Draw a word-wrapped string with foreground/background shade.
+    /// Returns the logical y coordinate immediately after the last drawn line.
+    uint16_t drawTextWrappedGray(uint16_t x, uint16_t startY, uint16_t maxW,
+                                 const char* str,
+                                 GrayLevel fg, GrayLevel bg, uint8_t scale = 1);
+
+    /// Render a 1-bit source bitmap to the grayscale framebuffer.
+    /// bits: packed pixel data, MSB first (bit 7 of byte 0 = leftmost pixel),
+    /// rowStride bytes per row (padded to the caller's row boundary).
+    /// Bit value 1 → fg, bit value 0 → bg.
+    void drawBitmapGray(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                        const uint8_t* bits, uint16_t rowStride,
+                        GrayLevel fg, GrayLevel bg);
     const X4DisplayStatus& status() const { return _status; }
 
 private:
     EInkDisplay        _eink;
     X4DisplayStatus    _status;
     bool               _initialized    = false;
+    bool               _grayscaleActive = false;  ///< true after displayGrayscale(), cleared by 1-bit refreshes
     uint8_t            _fastRefreshCount = 0;
     DisplayOrientation _orientation    = DisplayOrientation::LANDSCAPE;
     const BitmapFont*  _activeFont     = nullptr;  // nullptr → FONT_5X7 (set in init)
+
+    // Second 1-bit plane (RED RAM, CMD 0x26).  Combined with the SDK BW plane
+    // this encodes all four GrayLevel shades.  Size matches the physical buffer.
+    // Heap-allocated in init() to avoid overflowing the static DRAM segment.
+    uint8_t* _grayPlane = nullptr;
 
     // Physical panel dimensions (constant, orientation-independent).
     uint16_t _physW() const { return _eink.getDisplayWidth();  }
@@ -145,4 +223,8 @@ private:
 
     void _recordRefresh(const char* type, uint32_t durationMs);
     void _setError(const char* msg);
+
+    // Write a single logical pixel to both the BW plane and the RED plane,
+    // applying the current orientation transform.
+    void _setGrayPixel(uint16_t lx, uint16_t ly, GrayLevel level);
 };

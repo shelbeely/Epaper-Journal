@@ -49,12 +49,8 @@ String TitlePromptScreen::run(X4Display& display, X4Input& input, X4Clock& clock
 
         if (needRedraw) {
             _render(display, options, selected);
-            if (fullRefreshPending) {
-                display.fullRefresh();
-                fullRefreshPending = false;
-            } else {
-                display.fastRefresh();
-            }
+            display.displayGrayscale();
+            fullRefreshPending = false;
             needRedraw = false;
         }
 
@@ -63,26 +59,32 @@ String TitlePromptScreen::run(X4Display& display, X4Input& input, X4Clock& clock
 }
 
 void TitlePromptScreen::_render(X4Display& display, const String options[3], uint8_t selected) {
-    uint8_t* fb    = display.getFrameBuffer();
     uint16_t dispW = display.width();
-    uint16_t dispH = display.height();
 
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    display.clearFrameGrayscale();
 
-    display.drawText(fb, 4, 4, "CHOOSE TITLE", false, TITLE_SCALE);
-    display.drawText(fb, 4, 28, "UP/DN:choose  CONFIRM:use  BACK:cancel", false, 1);
-    display.fillRect(fb, 0, HEADER_H - 2, dispW, 1, true);
+    // Header band
+    display.fillRectGray(0, 0, dispW, HEADER_H - 2, GrayLevel::DARK_GRAY);
+    display.drawTextGray(4, 4, "CHOOSE TITLE",
+                         GrayLevel::WHITE, GrayLevel::DARK_GRAY, TITLE_SCALE);
+    display.drawTextGray(4, 28, "UP/DN:choose  CONFIRM:use  BACK:cancel",
+                         GrayLevel::WHITE, GrayLevel::DARK_GRAY, 1);
+    display.fillRectGray(0, HEADER_H - 2, dispW, 2, GrayLevel::DARK_GRAY);
 
     for (uint8_t i = 0; i < OPTION_COUNT; i++) {
         uint16_t itemY = HEADER_H + i * ITEM_H;
         bool sel = (i == selected);
+
         if (sel) {
-            display.fillRect(fb, 0, itemY, dispW, ITEM_H, true);
+            display.fillRectGray(0, itemY, dispW, ITEM_H, GrayLevel::DARK_GRAY);
         }
+
+        GrayLevel fg = sel ? GrayLevel::WHITE : GrayLevel::BLACK;
+        GrayLevel bg = sel ? GrayLevel::DARK_GRAY : GrayLevel::WHITE;
 
         uint16_t textW = (uint16_t)(options[i].length() * FONT5X7_ADVANCE * ITEM_SCALE);
         uint16_t textX = textW + 8 < dispW ? (dispW - textW) / 2 : 4;
         uint16_t textY = itemY + (ITEM_H - FONT5X7_LINE_H * ITEM_SCALE) / 2;
-        display.drawText(fb, textX, textY, options[i].c_str(), sel, ITEM_SCALE);
+        display.drawTextGray(textX, textY, options[i].c_str(), fg, bg, ITEM_SCALE);
     }
 }

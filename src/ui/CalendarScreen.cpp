@@ -50,12 +50,8 @@ void CalendarScreen::run() {
         if (needRedraw) {
             std::vector<String> paths = _jm.listEntries(year, month);
             _render(year, month, paths);
-            if (fullRefreshPending) {
-                _display.fullRefresh();
-                fullRefreshPending = false;
-            } else {
-                _display.fastRefresh();
-            }
+            _display.displayGrayscale();
+            fullRefreshPending = false;
             needRedraw = false;
         }
 
@@ -102,40 +98,40 @@ bool CalendarScreen::_hasEntry(const std::vector<String>& paths,
 
 void CalendarScreen::_render(uint16_t year, uint8_t month,
                               const std::vector<String>& paths) {
-    uint8_t* fb    = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
 
-    // Clear to white
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    // Clear to white (both BW and RED planes)
+    _display.clearFrameGrayscale();
 
-    // ── Header ────────────────────────────────────────────────────────────────
+    // ── Header band (DARK_GRAY background) ───────────────────────────────────
     {
         char hdr[16];
         snprintf(hdr, sizeof(hdr), "STREAK %04u-%02u", year, month);
-        _display.drawText(fb, 4, 4, hdr, false, SCALE);
+        _display.fillRectGray(0, 0, dispW, HDR_H - 1, GrayLevel::DARK_GRAY);
+        _display.drawTextGray(4, 4, hdr, GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
 
         // Navigation hint (right side)
         const char* hint = "UP/DN:month  BACK:exit";
         uint16_t hintW = (uint16_t)(strlen(hint) * _display.charAdvance(1));
-        _display.drawText(fb, dispW - hintW - 4, 8, hint, false, 1);
-
-        // Header separator
-        _display.fillRect(fb, 0, HDR_H - 2, dispW, 1, true);
+        _display.drawTextGray(dispW - hintW - 4, 8, hint,
+                              GrayLevel::WHITE, GrayLevel::DARK_GRAY, 1);
     }
 
-    // ── Day-of-week labels (Mo Tu We Th Fr Sa Su) ─────────────────────────────
+    // ── Day-of-week labels (LIGHT_GRAY background) ────────────────────────────
     {
         static const char* const DOW_LABELS[] =
             {"Mo","Tu","We","Th","Fr","Sa","Su"};
         uint16_t colW = dispW / NCOLS;
+        _display.fillRectGray(0, DOW_Y, dispW, DOW_H, GrayLevel::LIGHT_GRAY);
         for (uint8_t col = 0; col < NCOLS; col++) {
             uint16_t labelW = (uint16_t)(2 * _display.charAdvance(SCALE));
             uint16_t x = col * colW + (colW - labelW) / 2;
-            _display.drawText(fb, x, DOW_Y + 4, DOW_LABELS[col], false, SCALE);
+            _display.drawTextGray(x, DOW_Y + 4, DOW_LABELS[col],
+                                  GrayLevel::BLACK, GrayLevel::LIGHT_GRAY, SCALE);
         }
-        // Separator below DOW row
-        _display.fillRect(fb, 0, DOW_Y + DOW_H - 2, dispW, 1, true);
+        // DARK_GRAY separator below DOW row
+        _display.fillRectGray(0, DOW_Y + DOW_H - 2, dispW, 1, GrayLevel::DARK_GRAY);
     }
 
     // ── Calendar grid ─────────────────────────────────────────────────────────
@@ -151,7 +147,6 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
         struct tm today;
         memset(&today, 0, sizeof(today));
         {
-            // Use a simple struct to avoid including X4Clock internals
             time_t t = time(nullptr);
             localtime_r(&t, &today);
         }
@@ -162,7 +157,6 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
         uint8_t dayNum = 1;
         for (uint8_t row = 0; row < NROWS && dayNum <= totalDays; row++) {
             for (uint8_t col = 0; col < NCOLS; col++) {
-                // Skip leading empty cells for the first week
                 if (row == 0 && col < firstDow) continue;
                 if (dayNum > totalDays) break;
 
@@ -172,48 +166,43 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
                 bool hasEntry = _hasEntry(paths, dayNum, year, month);
                 bool isToday  = isCurrentMonth && (dayNum == todayDay);
 
+                char dayStr[3];
+                snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
+                uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
+
                 if (hasEntry) {
-                    // Filled square (entry exists)
+                    // DARK_GRAY filled square
                     uint16_t margin = 4;
-                    _display.fillRect(fb,
+                    _display.fillRectGray(
                         cellX + margin, cellY + margin,
                         colW - margin * 2, rowH - margin * 2,
-                        true);
-                    // Day number in white (inverted)
-                    char dayStr[3];
-                    snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
-                    uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
-                    _display.drawText(fb,
+                        GrayLevel::DARK_GRAY);
+                    // Day number in WHITE
+                    _display.drawTextGray(
                         cellX + (colW - numW) / 2,
                         cellY + (rowH - _display.lineHeight(SCALE)) / 2,
-                        dayStr, true, SCALE);
+                        dayStr, GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
                 } else if (isToday) {
-                    // Today: draw a border square
-                    _display.fillRect(fb, cellX + 3, cellY + 3,
-                                      colW - 6, 1, true);
-                    _display.fillRect(fb, cellX + 3, cellY + rowH - 4,
-                                      colW - 6, 1, true);
-                    _display.fillRect(fb, cellX + 3, cellY + 3,
-                                      1, rowH - 6, true);
-                    _display.fillRect(fb, cellX + colW - 4, cellY + 3,
-                                      1, rowH - 6, true);
-                    // Day number
-                    char dayStr[3];
-                    snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
-                    uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
-                    _display.drawText(fb,
+                    // DARK_GRAY 4-sided border
+                    _display.fillRectGray(cellX + 3, cellY + 3,
+                                          colW - 6, 1, GrayLevel::DARK_GRAY);
+                    _display.fillRectGray(cellX + 3, cellY + rowH - 4,
+                                          colW - 6, 1, GrayLevel::DARK_GRAY);
+                    _display.fillRectGray(cellX + 3, cellY + 3,
+                                          1, rowH - 6, GrayLevel::DARK_GRAY);
+                    _display.fillRectGray(cellX + colW - 4, cellY + 3,
+                                          1, rowH - 6, GrayLevel::DARK_GRAY);
+                    // Day number in BLACK
+                    _display.drawTextGray(
                         cellX + (colW - numW) / 2,
                         cellY + (rowH - _display.lineHeight(SCALE)) / 2,
-                        dayStr, false, SCALE);
+                        dayStr, GrayLevel::BLACK, GrayLevel::WHITE, SCALE);
                 } else {
                     // Empty day: just draw the day number
-                    char dayStr[3];
-                    snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
-                    uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
-                    _display.drawText(fb,
+                    _display.drawTextGray(
                         cellX + (colW - numW) / 2,
                         cellY + (rowH - _display.lineHeight(SCALE)) / 2,
-                        dayStr, false, SCALE);
+                        dayStr, GrayLevel::BLACK, GrayLevel::WHITE, SCALE);
                 }
 
                 dayNum++;
@@ -225,6 +214,7 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
         snprintf(cntBuf, sizeof(cntBuf), "%u entr%s this month",
                  (unsigned)paths.size(),
                  paths.size() == 1 ? "y" : "ies");
-        _display.drawText(fb, 4, dispH - _display.lineHeight(1) - 4, cntBuf, false, 1);
+        _display.drawTextGray(4, dispH - _display.lineHeight(1) - 4, cntBuf,
+                              GrayLevel::BLACK, GrayLevel::WHITE, 1);
     }
 }

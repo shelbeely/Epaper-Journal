@@ -17,6 +17,12 @@ public:
     // Show Theme dashboard until user presses Back/Confirm.
     void run();
 
+    // Render the theme cover once (portrait orientation) without waiting for
+    // user input and without calling displayGrayscale() — callers must call
+    // displayGrayscale() or sleep() themselves.
+    // Sets orientation to PORTRAIT_CW and leaves it that way on return.
+    void renderOnce(int noteTop = 0, int ratingWeekOffset = 0);
+
 private:
     struct RatingSample {
         uint32_t dateKey = 0;   // YYYYMMDD

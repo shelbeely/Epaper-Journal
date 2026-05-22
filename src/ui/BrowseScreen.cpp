@@ -111,12 +111,8 @@ BrowseResult BrowseScreen::run(String& outPath) {
 
         if (needRedraw) {
             _render(labels, selected, topRow);
-            if (fullRefreshPending) {
-                _display.fullRefresh();
-                fullRefreshPending = false;
-            } else {
-                _display.fastRefresh();
-            }
+            _display.displayGrayscale();
+            fullRefreshPending = false;
             needRedraw = false;
         }
 
@@ -126,32 +122,34 @@ BrowseResult BrowseScreen::run(String& outPath) {
 
 void BrowseScreen::_render(const std::vector<String>& labels,
                             int selected, int topRow) {
-    uint8_t* fb    = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
 
-    // Clear to white
-    memset(fb, 0xFF, (dispW / 8) * dispH);
+    // Clear to white (both BW and RED planes)
+    _display.clearFrameGrayscale();
 
-    // ── Header ────────────────────────────────────────────────────────────────
-    _display.drawText(fb, 4, 4, "JOURNAL", false, SCALE);
+    // ── Header band (DARK_GRAY background) ───────────────────────────────────
+    // Title row occupies y=0..25; prompt row y=26..41; separator at y=42.
+    _display.fillRectGray(0, 0, dispW, 26, GrayLevel::DARK_GRAY);
+    _display.drawTextGray(4, 4, "JOURNAL", GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
 
-    // Current month label on the right side
+    // Current month label on the right side of the title row
     uint16_t year; uint8_t month;
     _clock.currentYearMonth(year, month);
     char monthBuf[12];
     snprintf(monthBuf, sizeof(monthBuf), "%04u-%02u", year, month);
     uint16_t monthLabelW = (uint16_t)(strlen(monthBuf) * _display.charAdvance(SCALE));
-    _display.drawText(fb, dispW - monthLabelW - 4, 4, monthBuf, false, SCALE);
+    _display.drawTextGray(dispW - monthLabelW - 4, 4, monthBuf,
+                          GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
 
-    // Today's writing prompt (scale 1, below the title row)
+    // Today's writing prompt (LIGHT_GRAY background, scale 1)
+    _display.fillRectGray(0, 26, dispW, 16, GrayLevel::LIGHT_GRAY);
     struct tm now = _clock.now();
     const char* prompt = PromptPack::today(now);
-    _display.drawText(fb, 4, 26, prompt, false, 1);
+    _display.drawTextGray(4, 26, prompt, GrayLevel::BLACK, GrayLevel::LIGHT_GRAY, 1);
 
     // Separator line
-    const uint16_t sepY = HEADER_H - 2;
-    _display.fillRect(fb, 0, sepY, dispW, 1, true);
+    _display.fillRectGray(0, HEADER_H - 2, dispW, 1, GrayLevel::DARK_GRAY);
 
     // ── Entry list ────────────────────────────────────────────────────────────
     const int visibleCount = (int)labels.size();
@@ -163,9 +161,13 @@ void BrowseScreen::_render(const std::vector<String>& labels,
         bool sel = (idx == selected);
 
         if (sel) {
-            // Highlight bar
-            _display.fillRect(fb, 0, itemY, dispW, _itemH, true);
+            // DARK_GRAY highlight bar
+            _display.fillRectGray(0, itemY, dispW, _itemH, GrayLevel::DARK_GRAY);
+            _display.drawTextGray(4, itemY + 2, labels[idx].c_str(),
+                                  GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
+        } else {
+            _display.drawTextGray(4, itemY + 2, labels[idx].c_str(),
+                                  GrayLevel::BLACK, GrayLevel::WHITE, SCALE);
         }
-        _display.drawText(fb, 4, itemY + 2, labels[idx].c_str(), sel, SCALE);
     }
 }

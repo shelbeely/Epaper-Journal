@@ -132,12 +132,8 @@ String SearchScreen::run() {
                 _renderResults(query, labels, selected, topRow);
             }
 
-            if (fullRefreshPending) {
-                _display.fullRefresh();
-                fullRefreshPending = false;
-            } else {
-                _display.fastRefresh();
-            }
+            _display.displayGrayscale();
+            fullRefreshPending = false;
             needRedraw = false;
         }
 
@@ -161,16 +157,20 @@ String SearchScreen::_queryFromSlots(const uint8_t slots[QUERY_LEN]) {
 }
 
 void SearchScreen::_renderQuery(const uint8_t slots[QUERY_LEN], uint8_t cursor) {
-    uint8_t* fb = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
+    (void)dispH;
     String query = _queryFromSlots(slots);
 
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    // Clear to white (both BW and RED planes)
+    _display.clearFrameGrayscale();
 
-    _display.drawText(fb, 4, 4, "SEARCH", false, SCALE);
-    _display.drawText(fb, 4, 26, "UP/DN:char  LR:move  CONFIRM:search  BACK:cancel", false, 1);
-    _display.fillRect(fb, 0, HEADER_H - 2, dispW, 1, true);
+    // ── Header band (DARK_GRAY background) ───────────────────────────────────
+    _display.fillRectGray(0, 0, dispW, HEADER_H - 2, GrayLevel::DARK_GRAY);
+    _display.drawTextGray(4, 4, "SEARCH", GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
+    _display.drawTextGray(4, 26, "UP/DN:char  LR:move  CONFIRM:search  BACK:cancel",
+                          GrayLevel::WHITE, GrayLevel::DARK_GRAY, 1);
+    _display.fillRectGray(0, HEADER_H - 2, dispW, 1, GrayLevel::DARK_GRAY);
 
     const uint16_t boxW = 22;
     const uint16_t boxH = 28;
@@ -183,48 +183,59 @@ void SearchScreen::_renderQuery(const uint8_t slots[QUERY_LEN], uint8_t cursor) 
         uint16_t x = startX + i * (boxW + gap);
         bool sel = (i == cursor);
         if (sel) {
-            _display.fillRect(fb, x, boxY, boxW, boxH, true);
+            // DARK_GRAY filled selected box
+            _display.fillRectGray(x, boxY, boxW, boxH, GrayLevel::DARK_GRAY);
         } else {
-            _display.fillRect(fb, x, boxY, boxW, 1, true);
-            _display.fillRect(fb, x, boxY + boxH - 1, boxW, 1, true);
-            _display.fillRect(fb, x, boxY, 1, boxH, true);
-            _display.fillRect(fb, x + boxW - 1, boxY, 1, boxH, true);
+            // LIGHT_GRAY outline for unselected boxes
+            _display.fillRectGray(x, boxY, boxW, 1, GrayLevel::LIGHT_GRAY);
+            _display.fillRectGray(x, boxY + boxH - 1, boxW, 1, GrayLevel::LIGHT_GRAY);
+            _display.fillRectGray(x, boxY, 1, boxH, GrayLevel::LIGHT_GRAY);
+            _display.fillRectGray(x + boxW - 1, boxY, 1, boxH, GrayLevel::LIGHT_GRAY);
         }
 
         char ch[2] = {CHARSET[slots[i]], '\0'};
         uint16_t charX = x + (boxW - FONT5X7_ADVANCE * SCALE) / 2;
         uint16_t charY = boxY + 5;
-        _display.drawText(fb, charX, charY, ch, sel, SCALE);
+        if (sel) {
+            _display.drawTextGray(charX, charY, ch, GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
+        } else {
+            _display.drawTextGray(charX, charY, ch, GrayLevel::BLACK, GrayLevel::WHITE, SCALE);
+        }
     }
 
-    _display.drawText(fb, 4, boxY + boxH + 18,
-                      query.isEmpty() ? "Enter a keyword, title, or date." : query.c_str(),
-                      false, 1);
+    _display.drawTextGray(4, boxY + boxH + 18,
+                          query.isEmpty() ? "Enter a keyword, title, or date." : query.c_str(),
+                          GrayLevel::BLACK, GrayLevel::WHITE, 1);
 }
 
 void SearchScreen::_renderResults(const String& query,
                                   const std::vector<String>& labels,
                                   int selected, int topRow) {
-    uint8_t* fb = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
 
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    // Clear to white (both BW and RED planes)
+    _display.clearFrameGrayscale();
 
-    _display.drawText(fb, 4, 4, "SEARCH", false, SCALE);
+    // ── Header band (DARK_GRAY background) ───────────────────────────────────
+    _display.fillRectGray(0, 0, dispW, HEADER_H - 2, GrayLevel::DARK_GRAY);
+    _display.drawTextGray(4, 4, "SEARCH", GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
     String prompt = "Q: " + query;
-    _display.drawText(fb, 4, 26, prompt.c_str(), false, 1);
+    _display.drawTextGray(4, 26, prompt.c_str(), GrayLevel::WHITE, GrayLevel::DARK_GRAY, 1);
 
     char countLine[16];
     snprintf(countLine, sizeof(countLine), "%u match%s",
              (unsigned)labels.size(), labels.size() == 1 ? "" : "es");
     uint16_t countW = (uint16_t)(strlen(countLine) * FONT5X7_ADVANCE);
-    _display.drawText(fb, dispW - countW - 4, 26, countLine, false, 1);
-    _display.fillRect(fb, 0, HEADER_H - 2, dispW, 1, true);
+    _display.drawTextGray(dispW - countW - 4, 26, countLine,
+                          GrayLevel::WHITE, GrayLevel::DARK_GRAY, 1);
+    _display.fillRectGray(0, HEADER_H - 2, dispW, 1, GrayLevel::DARK_GRAY);
 
     if (labels.empty()) {
-        _display.drawText(fb, 4, HEADER_H + 8, "[ NO MATCHES ]", false, SCALE);
-        _display.drawText(fb, 4, HEADER_H + 32, "BACK: exit", false, 1);
+        _display.drawTextGray(4, HEADER_H + 8, "[ NO MATCHES ]",
+                              GrayLevel::BLACK, GrayLevel::WHITE, SCALE);
+        _display.drawTextGray(4, HEADER_H + 32, "BACK: exit",
+                              GrayLevel::BLACK, GrayLevel::WHITE, 1);
         return;
     }
 
@@ -236,9 +247,13 @@ void SearchScreen::_renderResults(const String& query,
         uint16_t itemY = HEADER_H + (uint16_t)(i * ITEM_H);
         bool sel = (idx == selected);
         if (sel) {
-            _display.fillRect(fb, 0, itemY, dispW, ITEM_H, true);
+            _display.fillRectGray(0, itemY, dispW, ITEM_H, GrayLevel::DARK_GRAY);
+            _display.drawTextGray(4, itemY + 2, labels[idx].c_str(),
+                                  GrayLevel::WHITE, GrayLevel::DARK_GRAY, SCALE);
+        } else {
+            _display.drawTextGray(4, itemY + 2, labels[idx].c_str(),
+                                  GrayLevel::BLACK, GrayLevel::WHITE, SCALE);
         }
-        _display.drawText(fb, 4, itemY + 2, labels[idx].c_str(), sel, SCALE);
     }
 }
 
