@@ -18,6 +18,7 @@
 #include "ota/OtaManager.h"
 #include "system/X4Clock.h"
 #include "journal/JournalManager.h"
+#include "journal/PromptPack.h"
 #include "web/WebApi.h"
 #include "wifi/WifiProvisioning.h"
 #include "ui/BrowseScreen.h"
@@ -25,6 +26,7 @@
 #include "ui/SleepScreen.h"
 #include "ui/CalendarScreen.h"
 #include "ui/PinScreen.h"
+#include "ui/TitlePromptScreen.h"
 #include "vault/VaultManager.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -250,11 +252,15 @@ void loop() {
     BrowseResult result = gBrowse.run(selectedPath);
 
     if (result == BrowseResult::NEW_ENTRY) {
-        String path = gJournalMgr.createEntry("New Entry");
-        if (!path.isEmpty()) {
-            JournalEntry e;
-            if (gJournalMgr.loadEntry(path, e)) {
-                gEntryScreen.show(e);
+        const String dailyPrompt = String(PromptPack::today(gClock.now()));
+        const String title = TitlePromptScreen::run(gDisplay, gInput, gClock, dailyPrompt);
+        if (!title.isEmpty()) {
+            String path = gJournalMgr.createEntry(title);
+            if (!path.isEmpty()) {
+                JournalEntry e;
+                if (gJournalMgr.loadEntry(path, e)) {
+                    gEntryScreen.show(e);
+                }
             }
         }
     } else if (result == BrowseResult::CALENDAR) {

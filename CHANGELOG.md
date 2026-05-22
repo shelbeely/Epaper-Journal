@@ -10,6 +10,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 ### Added
 - Added `tools/serve_ota_manifest.py` to host OTA `manifest.json` + `firmware.bin` locally with computed SHA-256, and documented manifest setup/placeholder behavior.
+- New entry title prompt screen with selectable date, daily-prompt, and untitled defaults before creating a journal entry.
 
 - Wi-Fi provisioning fallback at `http://192.168.4.1/wifi-setup` that stores credentials in NVS and reboots the device.
 - Added a persisted Wi-Fi toggle (`WIFI_AUTO_ON`, NVS `system/wifi_on`) with a Browse menu item to turn Wi-Fi ON/OFF.
