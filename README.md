@@ -129,6 +129,7 @@ The most commonly changed tunables live in `src/config.h`. Override any `#ifndef
 |---|---|---|
 | `WIFI_SSID` | `"your-ssid"` | Station-mode SSID. Use a `src/secrets.h` (gitignored) or inject via build flags. |
 | `WIFI_PASSWORD` | `"your-password"` | Station-mode password. Same approach as SSID. |
+| `WIFI_AUTO_ON` | `1` | Default Wi-Fi state when no persisted preference exists (`1`=enabled, `0`=disabled). |
 | `SOFTAP_SSID` | `"eJournal"` | Soft-AP network name for the web editor. |
 | `IDLE_SLEEP_TIMEOUT_MS` | `300000` (5 min) | Milliseconds of inactivity before the sleep screen and deep sleep. |
 | `BATTERY_ADC_PIN` | `0` (disabled) | ADC GPIO for the battery voltage divider. Set to `0` to disable monitoring. |
@@ -210,7 +211,7 @@ The `open-x4-sdk/` submodule provides board-level drivers. Everything in `src/` 
 | 2 — Web Editor | ✅ v0.1.0 | Soft-AP web editing workflow |
 | 3 — Journal UX | ✅ v0.1.0 | Prompt packs, streak calendar, sleep screen |
 | 4 — Privacy Mode | ✅ v0.1.0 | AES-GCM encrypted vault, PIN entry, vault routes |
-| 5 — Companion Tools | 🚧 In progress | PWA, export, and backup follow-up work |
+| 5 — Companion Tools | 🚧 In progress | PWA follow-up work; web ZIP backup export is now available |
 
 Full release notes: [CHANGELOG.md](CHANGELOG.md)
 
@@ -239,4 +240,4 @@ Full release notes: [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
-A LICENSE file has not yet been added to this repository. Until one is present, the source code is not licensed for redistribution or modification by third parties.
+MIT License — see [LICENSE](LICENSE)

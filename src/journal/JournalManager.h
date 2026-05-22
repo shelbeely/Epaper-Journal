@@ -16,6 +16,9 @@ public:
     JournalManager(X4Storage& storage, X4Clock& clock,
                    VaultManager* vault = nullptr);
 
+    // Startup hook for journal housekeeping.
+    void begin();
+
     // Create a new entry with the given title.
     // Auto-generates a filename from the current timestamp.
     // Encrypts the file if the vault is unlocked.
@@ -35,13 +38,23 @@ public:
     // Read the raw file content of an entry (for HTTP export).
     String readEntryRaw(const String& path);
 
+    // Read an entry for backup/export. Encrypted entries are returned decrypted
+    // when possible unless `rawEncrypted` is true, in which case the on-disk
+    // ciphertext is preserved.
+    bool readEntryForExport(const String& path, String& out, bool rawEncrypted = false);
+
     // List entry paths for the given year/month, sorted alphabetically
     // (chronological because filenames are timestamp-based).
     std::vector<String> listEntries(uint16_t year, uint8_t month);
 
     // List all entry paths across every year/month stored on the SD card.
-    // Returns paths sorted oldest-first (ascending). Searches 2020 → current year.
+    // Returns paths sorted oldest-first (ascending). Searches 2020 → effective
+    // current year, using the last persisted good clock epoch as a floor.
     std::vector<String> listAllPaths();
+
+    // Search entry titles + first 500 chars of body for `query`, case-insensitive.
+    // Locked/encrypted entries are matched by filename/date only.
+    std::vector<String> searchEntries(const String& query);
 
     // Delete an entry by its full path. Returns false on failure.
     bool deleteEntry(const String& path);
@@ -61,4 +74,6 @@ private:
 
     // Build "/journal/YYYY/MM/" directory path into buf (≥ 24 chars).
     static void _journalDir(char* buf, uint16_t year, uint8_t month);
+
+    void cleanupOrphanTempFiles();
 };

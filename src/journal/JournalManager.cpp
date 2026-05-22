@@ -5,11 +5,33 @@
 #include "JournalManager.h"
 #include "JournalFrontmatter.h"
 #include <algorithm>
+#include <ctype.h>
+
+namespace {
+
+String toLowerCopy(const String& input) {
+    String out;
+    for (unsigned int i = 0; i < input.length(); i++) {
+        out += (char)tolower((unsigned char)input[i]);
+    }
+    return out;
+}
+
+bool containsCaseInsensitive(const String& haystack, const String& needleLower) {
+    if (needleLower.isEmpty()) return false;
+    return toLowerCopy(haystack).indexOf(needleLower) >= 0;
+}
+
+} // namespace
 
 JournalManager::JournalManager(X4Storage& storage, X4Clock& clock,
                                 VaultManager* vault)
     : _storage(storage), _clock(clock), _vault(vault)
 {}
+
+void JournalManager::begin() {
+    cleanupOrphanTempFiles();
+}
 
 String JournalManager::createEntry(const String& title) {
     if (!_storage.ready()) return "";
@@ -62,7 +84,13 @@ bool JournalManager::saveEntry(const String& path, const JournalEntry& entry) {
     }
     // else: vault nullptr or entry is plaintext → save as-is
 
-    return _storage.writeEntry(path.c_str(), content);
+    String tmpPath = path + ".tmp";
+    if (!_storage.writeEntry(tmpPath.c_str(), content)) return false;
+    if (!_storage.raw().rename(tmpPath.c_str(), path.c_str())) {
+        _storage.raw().remove(tmpPath.c_str());
+        return false;
+    }
+    return true;
 }
 
 bool JournalManager::loadEntry(const String& path, JournalEntry& out) {
@@ -81,6 +109,12 @@ bool JournalManager::loadEntry(const String& path, JournalEntry& out) {
             }
             JournalFrontmatter::parse(decrypted, out);
             out.locked = false;
+            if (content.startsWith(VaultManager::VAULT_HEADER_V1)) {
+                String upgraded = _vault->encrypt(decrypted);
+                if (!upgraded.isEmpty()) {
+                    _storage.writeEntry(path.c_str(), upgraded);
+                }
+            }
         } else {
             out.title  = "[LOCKED]";
             out.body   = "[This entry is encrypted. Unlock the vault to read.]";
@@ -96,6 +130,25 @@ bool JournalManager::loadEntry(const String& path, JournalEntry& out) {
 
 String JournalManager::readEntryRaw(const String& path) {
     return _storage.readEntry(path.c_str());
+}
+
+bool JournalManager::readEntryForExport(const String& path, String& out, bool rawEncrypted) {
+    out = _storage.readEntry(path.c_str());
+    if (out.isEmpty()) return false;
+
+    if (!_vault || !VaultManager::isEncryptedContent(out)) {
+        return true;
+    }
+
+    if (rawEncrypted || !_vault->isUnlocked()) {
+        return true;
+    }
+
+    String decrypted = _vault->decrypt(out);
+    if (!decrypted.isEmpty()) {
+        out = decrypted;
+    }
+    return true;
 }
 
 std::vector<String> JournalManager::listEntries(uint16_t year, uint8_t month) {
@@ -124,8 +177,7 @@ std::vector<String> JournalManager::listAllPaths() {
     std::vector<String> result;
     if (!_storage.ready()) return result;
 
-    uint16_t curYear; uint8_t dummy;
-    _clock.currentYearMonth(curYear, dummy);
+    uint16_t curYear = _clock.effectiveCurrentYear();
 
     for (uint16_t y = 2020; y <= curYear + 1; y++) {
         for (uint8_t m = 1; m <= 12; m++) {
@@ -135,6 +187,40 @@ std::vector<String> JournalManager::listAllPaths() {
     }
     std::sort(result.begin(), result.end());
     return result;
+}
+
+std::vector<String> JournalManager::searchEntries(const String& query) {
+    std::vector<String> matches;
+
+    String needle = query;
+    needle.trim();
+    if (needle.isEmpty()) return matches;
+    String needleLower = toLowerCopy(needle);
+
+    auto paths = listAllPaths();
+    matches.reserve(paths.size());
+
+    for (const auto& path : paths) {
+        String searchText = path + "\n" + labelFromFilename(path);
+
+        JournalEntry entry;
+        if (loadEntry(path, entry) && !entry.locked) {
+            searchText += "\n";
+            searchText += entry.title;
+            searchText += "\n";
+            if (entry.body.length() > 500) {
+                searchText += entry.body.substring(0, 500);
+            } else {
+                searchText += entry.body;
+            }
+        }
+
+        if (containsCaseInsensitive(searchText, needleLower)) {
+            matches.push_back(path);
+        }
+    }
+
+    return matches;
 }
 
 bool JournalManager::deleteEntry(const String& path) {
@@ -193,4 +279,24 @@ String JournalManager::labelFromFilename(const String& path) {
 /*static*/
 void JournalManager::_journalDir(char* buf, uint16_t year, uint8_t month) {
     snprintf(buf, 24, "/journal/%04u/%02u/", year, month);
+}
+
+void JournalManager::cleanupOrphanTempFiles() {
+    if (!_storage.ready()) return;
+
+    uint16_t curYear; uint8_t dummy;
+    _clock.currentYearMonth(curYear, dummy);
+
+    for (uint16_t y = 2020; y <= curYear + 1; y++) {
+        for (uint8_t m = 1; m <= 12; m++) {
+            char dir[24];
+            _journalDir(dir, y, m);
+            auto names = _storage.raw().listFiles(dir);
+            for (const auto& name : names) {
+                if (!name.endsWith(".tmp")) continue;
+                String fullPath = String(dir) + name;
+                _storage.raw().remove(fullPath.c_str());
+            }
+        }
+    }
 }

@@ -40,6 +40,19 @@ build_flags =
   -DWIFI_PASSWORD=\"MyPassword\"
 ```
 
+### On-device Wi-Fi provisioning
+
+`WIFI_PROVISIONING_ENABLED` defaults to `1` in `src/config.h`. On boot, the firmware:
+
+1. Loads Wi-Fi credentials from NVS (`wifi_creds` namespace) if a saved SSID exists.
+2. Falls back to the compile-time `WIFI_SSID` / `WIFI_PASSWORD` values when NVS is empty.
+3. Attempts the STA connection for 10 seconds while the `eJournal` soft-AP remains available.
+
+If the STA connection does not succeed within 10 seconds, browse to
+`http://192.168.4.1/wifi-setup` while connected to the device soft-AP. Submit the form to save
+new credentials into NVS and reboot the device. The saved credentials take priority on all future
+boots until they are replaced by another provisioning flow.
+
 ## Building
 
 ### Development build (all diagnostics on)
@@ -84,6 +97,45 @@ pio run -e dev --target upload
 
 # Or trigger an OTA apply via the HTTP API directly:
 curl -X POST http://<device-ip>/api/dev/ota/apply
+```
+
+### OTA manifest hosting (local)
+
+`src/config.h` ships with a placeholder `OTA_MANIFEST_URL`:
+
+```cpp
+#define OTA_MANIFEST_URL_PLACEHOLDER "https://updates.example.com/x4/manifest.json"
+```
+
+If this placeholder is still configured at boot, firmware logs:
+
+```text
+[X4:OTA_MANIFEST_NOT_CONFIGURED]
+```
+
+and skips OTA manifest checks until you configure a real URL.
+
+Host a manifest + binary locally with one command:
+
+```bash
+python3 tools/serve_ota_manifest.py --bin .pio/build/release/firmware.bin --version 0.2.0
+```
+
+The script serves:
+
+- `http://0.0.0.0:8080/manifest.json`
+- `http://0.0.0.0:8080/firmware.bin`
+
+Manifest schema:
+
+```json
+{"version":"0.2.0","url":"http://<host>:8080/firmware.bin","sha256":"<hex>","channel":"release"}
+```
+
+Set `OTA_MANIFEST_URL` (via `src/config.h` or `build_flags`) to your reachable host, for example:
+
+```ini
+-DOTA_MANIFEST_URL=\"http://192.168.4.2:8080/manifest.json\"
 ```
 
 ## Monitoring Serial output
@@ -149,6 +201,7 @@ After flashing a dev build and connecting to Wi-Fi:
 | `/api/journal/entry` | POST | Save entry — body: `{"path":"...","content":"..."}` |
 | `/api/journal/entry` | DELETE | Delete entry at `?path=<path>` |
 | `/api/journal/new` | POST | Create entry, return `{"path":"..."}` — body (optional): `{"title":"..."}` |
+| `/api/journal/export` | GET | Download a ZIP backup of every entry; `?encrypted=1` preserves vault ciphertext |
 
 #### `POST /api/journal/new`
 
@@ -162,6 +215,32 @@ curl -X POST http://192.168.4.1/api/journal/new \
   -d '{"title":"My First Entry"}'
 # → 201  {"path":"/journal/2026/05/20260520-103000.md"}
 ```
+
+### Backup and restore workflow
+
+Use the **Export All** button in the web UI to download a ZIP archive containing
+every journal file from the SD card. The archive preserves the `journal/YYYY/MM/`
+folder layout so it can be unpacked directly as a backup copy.
+
+By default, vault entries are exported as decrypted Markdown when the vault is
+already unlocked. If the vault is locked, those files remain in their raw
+encrypted on-disk form so the backup is still complete.
+
+```bash
+# Standard backup download
+curl -OJ http://192.168.4.1/api/journal/export
+
+# Force raw encrypted export for vault entries (no unlock required)
+curl -OJ "http://192.168.4.1/api/journal/export?encrypted=1"
+```
+
+To restore from a backup:
+
+1. Unzip the archive on your computer.
+2. Copy the extracted `journal/` directory back to the root of the device SD card.
+3. Reinsert the SD card or reboot the device so it rescans the journal files.
+4. If you restored encrypted vault entries, unlock the vault with the original PIN
+   before opening them.
 
 ## Phase 3 — Journal UX features
 
@@ -229,32 +308,71 @@ Select **[ LOCK VAULT ]** to immediately zero the in-memory key.
 
 ### Vault HTTP API
 
-Three endpoints are always available when the device is on Wi-Fi:
+Four endpoints are always available when the device is on Wi-Fi:
 
 | Method | Path | Body | Description |
 |---|---|---|---|
-| `GET` | `/api/vault/status` | — | `{"locked": true/false}` |
-| `POST` | `/api/vault/unlock` | `{"pin":"1234"}` | Derive key and unlock; returns `{"ok": true}` |
+| `GET` | `/api/vault/status` | — | Returns vault lock state plus failed-attempt / lockout metadata. |
+| `GET` | `/api/vault/challenge` | — | `{"nonce":"<64 hex chars>"}` — 32-byte single-use nonce (60 s TTL) |
+| `POST` | `/api/vault/unlock` | `{"response":"<hex(SHA256(nonce+pin))>"}` | Challenge-response unlock; returns `{"ok": true}` or HTTP `429` with `Retry-After` while locked out. |
 | `POST` | `/api/vault/lock` | — | Zero the in-memory key; returns `{"ok": true}` |
 
 ```bash
 # Check vault state
 curl http://192.168.4.1/api/vault/status
 
-# Unlock (PIN "1234")
+# Unlock (PIN "1234") using challenge-response:
+NONCE=$(curl -s http://192.168.4.1/api/vault/challenge | python3 -c "import sys,json; print(json.load(sys.stdin)['nonce'])")
+RESPONSE=$(python3 -c "
+import hashlib, sys
+nonce = bytes.fromhex('$NONCE')
+pin   = b'1234'
+print(hashlib.sha256(nonce + pin).hexdigest())
+")
 curl -X POST http://192.168.4.1/api/vault/unlock \
      -H 'Content-Type: application/json' \
-     -d '{"pin":"1234"}'
+     -d "{\"response\":\"$RESPONSE\"}"
+
+# If the PIN has been tried too many times, the device responds with:
+#   HTTP/1.1 429 Too Many Requests
+#   Retry-After: 30
+#   {"ok":false,"error":"vault_locked","retry_after":30,"failed_attempts":3}
 
 # Lock
 curl -X POST http://192.168.4.1/api/vault/lock
 ```
 
-> **Security note:** The PIN travels over plain HTTP on the soft-AP network. Do not use the same PIN for anything else while the soft-AP is reachable to untrusted devices.
+> **Security note:** The challenge-response flow ensures the raw PIN is never transmitted over HTTP. The server-side nonce is single-use and expires after 60 seconds, preventing replay attacks. Failed unlock attempts are persisted in NVS and escalate through 30 second, 5 minute, and 1 hour lockout windows.
 
 ### Locked entries in browse list
 
 When the vault is locked, encrypted entries show `[LOCKED]` as their title in the browse list and cannot be opened or edited. They are safe to browse without revealing any content.
+
+## Phase 5 — Backup export
+
+Use the web UI **Export All** button, or download a backup directly:
+
+```bash
+# Default backup: decrypt vault entries first when the vault is unlocked.
+curl -OJ http://192.168.4.1/api/journal/export
+
+# Raw encrypted backup: keeps vault files exactly as stored on disk.
+curl -OJ "http://192.168.4.1/api/journal/export?encrypted=1"
+```
+
+The ZIP contains the `journal/...` directory tree from the SD card so the
+backup preserves year/month folders and filenames.
+
+### Restore workflow
+
+1. Unzip the backup on your computer.
+2. Copy the extracted `journal/` directory back to the root of the SD card to
+   restore the full journal exactly as backed up.
+3. If you used the default export while the vault was unlocked, the restored
+   files are plain Markdown. To keep vault entries encrypted at rest, restore
+   from the `?encrypted=1` backup instead.
+4. As an alternative to copying the SD card directly, you can re-upload
+   individual Markdown files with `POST /api/journal/entry`.
 
  (`data/index.html`) is gzip-compressed and embedded in
 flash as a C byte array in `src/web/ui_bundle.h`.  The header is auto-generated

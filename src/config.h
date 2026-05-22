@@ -31,13 +31,22 @@
 #ifndef WIFI_PASSWORD
   #define WIFI_PASSWORD "your-password"
 #endif
+#ifndef WIFI_PROVISIONING_ENABLED
+  #define WIFI_PROVISIONING_ENABLED 1
+#endif
+#ifndef WIFI_AUTO_ON
+  #define WIFI_AUTO_ON 1
+#endif
 
 // Soft-AP SSID for Web Editor mode
 #define SOFTAP_SSID     "eJournal"
 #define SOFTAP_PASSWORD ""              // open AP — gate access via captive portal
 
 // ── OTA manifest endpoint ─────────────────────────────────────────────────────
-#define OTA_MANIFEST_URL "https://updates.example.com/x4/manifest.json"
+#define OTA_MANIFEST_URL_PLACEHOLDER "https://updates.example.com/x4/manifest.json"
+#ifndef OTA_MANIFEST_URL
+  #define OTA_MANIFEST_URL OTA_MANIFEST_URL_PLACEHOLDER
+#endif
 #define OTA_CONNECT_TIMEOUT_MS 10000
 
 // ── Crash-loop detection ──────────────────────────────────────────────────────

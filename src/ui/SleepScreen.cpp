@@ -32,10 +32,10 @@ void SleepScreen::sleep(uint8_t batteryPct) {
     constexpr uint8_t TSCALE = 3;
     constexpr uint8_t DSCALE = 2;
 
-    uint16_t timeW = (uint16_t)(strlen(timeBuf)  * FONT5X7_ADVANCE * TSCALE);
-    uint16_t dateW = (uint16_t)(strlen(dateBuf) * FONT5X7_ADVANCE * DSCALE);
+    uint16_t timeW = (uint16_t)(strlen(timeBuf)  * _display.charAdvance(TSCALE));
+    uint16_t dateW = (uint16_t)(strlen(dateBuf) * _display.charAdvance(DSCALE));
 
-    uint16_t timeY = dispH / 2 - (FONT5X7_LINE_H * TSCALE) - 4;
+    uint16_t timeY = dispH / 2 - _display.lineHeight(TSCALE) - 4;
     uint16_t dateY = dispH / 2 + 4;
 
     _display.drawText(fb, (dispW - timeW) / 2, timeY, timeBuf, false, TSCALE);
@@ -43,15 +43,15 @@ void SleepScreen::sleep(uint8_t batteryPct) {
 
     // ── "ZZZ" bottom-right ────────────────────────────────────────────────────
     constexpr uint8_t ZSCALE = 2;
-    uint16_t zW = (uint16_t)(3 * FONT5X7_ADVANCE * ZSCALE);
-    uint16_t zY = dispH - FONT5X7_LINE_H * ZSCALE - 8;
+    uint16_t zW = (uint16_t)(3 * _display.charAdvance(ZSCALE));
+    uint16_t zY = dispH - _display.lineHeight(ZSCALE) - 8;
     _display.drawText(fb, dispW - zW - 8, zY, "ZZZ", false, ZSCALE);
 
     // ── Battery (top-right corner) ────────────────────────────────────────────
     if (batteryPct > 0) {
         char batBuf[8];
         snprintf(batBuf, sizeof(batBuf), "%u%%", batteryPct);
-        uint16_t batW = (uint16_t)(strlen(batBuf) * FONT5X7_ADVANCE * 2);
+        uint16_t batW = (uint16_t)(strlen(batBuf) * _display.charAdvance(2));
         _display.drawText(fb, dispW - batW - 4, 4, batBuf, false, 2);
     }
 

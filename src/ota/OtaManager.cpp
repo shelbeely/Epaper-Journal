@@ -13,10 +13,17 @@
 
 OtaManager::OtaManager() {}
 
+static bool isManifestUrlConfigured() {
+    return String(OTA_MANIFEST_URL) != OTA_MANIFEST_URL_PLACEHOLDER;
+}
+
 // ── Boot-time hooks ───────────────────────────────────────────────────────────
 
 bool OtaManager::onBoot() {
     X4_LOG(X4M_BOOT_START);
+    if (!isManifestUrlConfigured()) {
+        X4_LOG(X4M_OTA_MANIFEST_NOT_CONFIGURED);
+    }
 
     // Check pending-verify state
     const esp_partition_t* running = esp_ota_get_running_partition();
@@ -43,6 +50,7 @@ bool OtaManager::onBoot() {
 void OtaManager::markBootHealthy() {
     if (_pendingVerify) {
         esp_ota_mark_app_valid_cancel_rollback();
+        _pendingVerify = false;
         X4_LOG(X4M_OTA_MARK_VALID);
     }
     // Reset crash-loop counter
@@ -62,6 +70,9 @@ void OtaManager::requestRollback() {
 
 OtaManifest OtaManager::fetchManifest() {
     OtaManifest m;
+    if (!isManifestUrlConfigured()) {
+        return m;
+    }
     WiFiClientSecure client;
     client.setInsecure(); // TODO: pin certificate for production
     HTTPClient http;

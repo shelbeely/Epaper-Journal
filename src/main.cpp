@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <BatteryMonitor.h>
+#include <Preferences.h>
 #include <esp_sleep.h>
 
 #include "config.h"
@@ -17,12 +18,16 @@
 #include "ota/OtaManager.h"
 #include "system/X4Clock.h"
 #include "journal/JournalManager.h"
+#include "journal/PromptPack.h"
 #include "web/WebApi.h"
+#include "wifi/WifiProvisioning.h"
 #include "ui/BrowseScreen.h"
 #include "ui/EntryScreen.h"
 #include "ui/SleepScreen.h"
 #include "ui/CalendarScreen.h"
+#include "ui/SearchScreen.h"
 #include "ui/PinScreen.h"
+#include "ui/TitlePromptScreen.h"
 #include "vault/VaultManager.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,29 +49,77 @@ static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock,
                                gSleepScreen, &gVault);
 static EntryScreen    gEntryScreen(gDisplay, gInput, gSleepScreen);
 static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
+static SearchScreen   gSearchScreen(gJournalMgr, gDisplay, gInput, gSleepScreen);
 static PinScreen      gPinScreen(gDisplay, gInput);
 
 static bool gSafeModeActive = false;
+static bool gWifiProvisioningActive = false;
+static bool gWifiEnabled = WIFI_AUTO_ON != 0;
+static constexpr const char* WIFI_STATE_NAMESPACE = "system";
+static constexpr const char* WIFI_STATE_KEY = "wifi_on";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void connectWifi() {
+static bool connectWifi() {
     // Combo mode: soft-AP always on (reachable at 192.168.4.1), STA attempted
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(SOFTAP_SSID, SOFTAP_PASSWORD);
     X4_LOGF(X4M_WIFI_AP_OK, "ssid=%s ip=192.168.4.1", SOFTAP_SSID);
 
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WifiCredentials wifiCreds = WifiProvisioning::loadPreferredCredentials();
+    WiFi.begin(wifiCreds.ssid.c_str(), wifiCreds.password.c_str());
     uint32_t t = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t < 10000) {
         delay(250);
     }
     if (WiFi.status() == WL_CONNECTED) {
         X4_LOG(X4M_WIFI_OK);
+        return false;
+    }
+
+    X4_LOG(X4M_WIFI_FAILED);
+#if WIFI_PROVISIONING_ENABLED
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool loadWifiEnabledState() {
+    Preferences prefs;
+    if (!prefs.begin(WIFI_STATE_NAMESPACE, true)) {
+        return WIFI_AUTO_ON != 0;
+    }
+    bool enabled = prefs.getBool(WIFI_STATE_KEY, WIFI_AUTO_ON != 0);
+    prefs.end();
+    return enabled;
+}
+
+static void saveWifiEnabledState(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin(WIFI_STATE_NAMESPACE, false)) {
+        return;
+    }
+    prefs.putBool(WIFI_STATE_KEY, enabled);
+    prefs.end();
+}
+
+static void disableWifiRadio() {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+
+static void setWifiEnabled(bool enabled, bool persist = true) {
+    if (enabled) {
+        connectWifi();
     } else {
-        X4_LOG(X4M_WIFI_FAILED);
+        disableWifiRadio();
+    }
+    gWifiEnabled = enabled;
+    if (persist) {
+        saveWifiEnabledState(enabled);
     }
 }
 
@@ -90,8 +143,8 @@ static bool runHealthChecks() {
         X4_LOGF(X4M_HEALTH_FAILED, "check=battery");
         ok = false;
     }
-    // 4. Wi-Fi connected (STA or AP)
-    if (WiFi.status() != WL_CONNECTED && WiFi.softAPgetStationNum() == 0) {
+    // 4. Wi-Fi connected (STA or AP) when Wi-Fi is enabled
+    if (gWifiEnabled && WiFi.status() != WL_CONNECTED && !(WiFi.getMode() & WIFI_AP)) {
         X4_LOGF(X4M_HEALTH_FAILED, "check=wifi");
         ok = false;
     }
@@ -141,6 +194,7 @@ void setup() {
     if (!gSafeModeActive) {
         gStorage.init();
         gDiag.storageReady = gStorage.ready();
+        gJournalMgr.begin();
     }
 
     // ── Battery ───────────────────────────────────────────────────────────
@@ -150,7 +204,12 @@ void setup() {
     }
 
     // ── Wi-Fi ─────────────────────────────────────────────────────────────
-    connectWifi();
+    gWifiEnabled = loadWifiEnabledState();
+    if (gWifiEnabled) {
+        gWifiProvisioningActive = connectWifi();
+    } else {
+        disableWifiRadio();
+    }
 
     // ── Clock sync (best-effort; falls back to NVS) ───────────────────────
     if (!gSafeModeActive) {
@@ -158,6 +217,7 @@ void setup() {
     }
 
     // ── HTTP server ───────────────────────────────────────────────────────
+    gWebApi.setWifiProvisioningMode(gWifiProvisioningActive);
     gWebApi.begin();
 
     // ── Health checks + OTA verification ─────────────────────────────────
@@ -181,12 +241,15 @@ void setup() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void loop() {
-    // Battery refresh every 30 seconds
-    static uint32_t lastBatRead = 0;
-    if (BATTERY_ADC_PIN != 0 && millis() - lastBatRead > 30000) {
-        gDiag.batteryPercent = gBattery.readPercentage();
-        gDiag.batteryMv      = gBattery.readMillivolts();
-        lastBatRead = millis();
+    // Periodic background maintenance every 30 seconds
+    static uint32_t lastPeriodicCheck = 0;
+    if (millis() - lastPeriodicCheck > 30000) {
+        if (BATTERY_ADC_PIN != 0) {
+            gDiag.batteryPercent = gBattery.readPercentage();
+            gDiag.batteryMv      = gBattery.readMillivolts();
+        }
+        gClock.syncIfNeeded();
+        lastPeriodicCheck = millis();
     }
 
     // Run the browse screen (blocks until user selects or presses Back)
@@ -194,21 +257,35 @@ void loop() {
     BrowseResult result = gBrowse.run(selectedPath);
 
     if (result == BrowseResult::NEW_ENTRY) {
-        String path = gJournalMgr.createEntry("New Entry");
+        const String dailyPrompt = String(PromptPack::today(gClock.now()));
+        const String title = TitlePromptScreen::run(gDisplay, gInput, gClock, dailyPrompt);
+        if (!title.isEmpty()) {
+            String path = gJournalMgr.createEntry(title);
+            if (!path.isEmpty()) {
+                JournalEntry e;
+                if (gJournalMgr.loadEntry(path, e)) {
+                    gEntryScreen.show(e);
+                }
+            }
+        }
+    } else if (result == BrowseResult::CALENDAR) {
+        gCalendar.run();
+    } else if (result == BrowseResult::SEARCH) {
+        String path = gSearchScreen.run();
         if (!path.isEmpty()) {
             JournalEntry e;
             if (gJournalMgr.loadEntry(path, e)) {
                 gEntryScreen.show(e);
             }
         }
-    } else if (result == BrowseResult::CALENDAR) {
-        gCalendar.run();
     } else if (result == BrowseResult::VAULT_TOGGLE) {
         if (gVault.isUnlocked()) {
             gVault.lock();
         } else {
             gPinScreen.run(gVault);
         }
+    } else if (result == BrowseResult::WIFI_TOGGLE) {
+        setWifiEnabled(!gWifiEnabled);
     } else if (result == BrowseResult::OPEN_ENTRY && !selectedPath.isEmpty()) {
         JournalEntry e;
         if (gJournalMgr.loadEntry(selectedPath, e)) {

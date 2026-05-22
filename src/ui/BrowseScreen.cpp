@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "BrowseScreen.h"
+#include <WiFi.h>
 #include "../journal/PromptPack.h"
 #include "../vault/VaultManager.h"
 
@@ -10,7 +11,8 @@ BrowseScreen::BrowseScreen(JournalManager& jm, X4Display& display,
                             X4Input& input, X4Clock& clock,
                             SleepScreen& sleepScreen, VaultManager* vault)
     : _jm(jm), _display(display), _input(input), _clock(clock),
-      _sleepScreen(sleepScreen), _vault(vault)
+      _sleepScreen(sleepScreen), _vault(vault),
+      _itemH(_display.lineHeight(SCALE))
 {}
 
 BrowseResult BrowseScreen::run(String& outPath) {
@@ -24,24 +26,29 @@ BrowseResult BrowseScreen::run(String& outPath) {
     // Build display labels:
     //   item 0 → "[ + NEW ENTRY ]"  (BrowseResult::NEW_ENTRY)
     //   item 1 → "[ STREAK ]"       (BrowseResult::CALENDAR)
-    //   item 2+ → entry titles      (BrowseResult::OPEN_ENTRY)
+    //   item 2 → "[ SEARCH ]"       (BrowseResult::SEARCH)
+    //   item 3 → vault toggle       (BrowseResult::VAULT_TOGGLE)
+    //   item 4 → wifi toggle        (BrowseResult::WIFI_TOGGLE)
+    //   item 4+ → entry titles      (BrowseResult::OPEN_ENTRY)
     std::vector<String> labels;
     labels.reserve(paths.size() + FIXED_ITEMS);
     labels.push_back("[ + NEW ENTRY ]");
     labels.push_back("[ STREAK ]");
+    labels.push_back("[ SEARCH ]");
     // Vault toggle item (label depends on lock state)
     if (_vault) {
         labels.push_back(_vault->isUnlocked() ? "[ LOCK VAULT ]" : "[ UNLOCK VAULT ]");
     } else {
         labels.push_back("[ VAULT (N/A) ]");
     }
+    labels.push_back(WiFi.getMode() == WIFI_OFF ? "[ WI-FI: OFF ]" : "[ WI-FI: ON ]");
     for (auto& p : paths) {
         labels.push_back(_jm.getEntryTitle(p));
     }
 
     const int totalItems  = (int)labels.size();
     const int dispH       = _display.height();
-    const int linesPerPage = (dispH - HEADER_H) / ITEM_H;
+    const int linesPerPage = (dispH - HEADER_H) / _itemH;
 
     int selected = 0;
     int topRow   = 0;
@@ -54,11 +61,15 @@ BrowseResult BrowseScreen::run(String& outPath) {
 
         // ── Idle timeout → sleep screen ───────────────────────────────────────
         if (millis() - lastActivity > IDLE_SLEEP_TIMEOUT_MS) {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
             _sleepScreen.sleep(0); // does not return
         }
 
         // ── Power-button deep sleep ───────────────────────────────────────────
         if (_input.isPowerButtonPressed()) {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
             _sleepScreen.sleep(0); // does not return
         }
 
@@ -79,7 +90,11 @@ BrowseResult BrowseScreen::run(String& outPath) {
             } else if (selected == 1) {
                 return BrowseResult::CALENDAR;
             } else if (selected == 2) {
+                return BrowseResult::SEARCH;
+            } else if (selected == 3) {
                 return BrowseResult::VAULT_TOGGLE;
+            } else if (selected == 3) {
+                return BrowseResult::WIFI_TOGGLE;
             } else {
                 outPath = paths[selected - FIXED_ITEMS];
                 return BrowseResult::OPEN_ENTRY;
@@ -122,7 +137,7 @@ void BrowseScreen::_render(const std::vector<String>& labels,
     _clock.currentYearMonth(year, month);
     char monthBuf[12];
     snprintf(monthBuf, sizeof(monthBuf), "%04u-%02u", year, month);
-    uint16_t monthLabelW = (uint16_t)(strlen(monthBuf) * FONT5X7_ADVANCE * SCALE);
+    uint16_t monthLabelW = (uint16_t)(strlen(monthBuf) * _display.charAdvance(SCALE));
     _display.drawText(fb, dispW - monthLabelW - 4, 4, monthBuf, false, SCALE);
 
     // Today's writing prompt (scale 1, below the title row)
@@ -136,16 +151,16 @@ void BrowseScreen::_render(const std::vector<String>& labels,
 
     // ── Entry list ────────────────────────────────────────────────────────────
     const int visibleCount = (int)labels.size();
-    for (int i = 0; i < (int)((dispH - HEADER_H) / ITEM_H); i++) {
+    for (int i = 0; i < (int)((dispH - HEADER_H) / _itemH); i++) {
         int idx = topRow + i;
         if (idx >= visibleCount) break;
 
-        uint16_t itemY = HEADER_H + (uint16_t)(i * ITEM_H);
+        uint16_t itemY = HEADER_H + (uint16_t)(i * _itemH);
         bool sel = (idx == selected);
 
         if (sel) {
             // Highlight bar
-            _display.fillRect(fb, 0, itemY, dispW, ITEM_H, true);
+            _display.fillRect(fb, 0, itemY, dispW, _itemH, true);
         }
         _display.drawText(fb, 4, itemY + 2, labels[idx].c_str(), sel, SCALE);
     }

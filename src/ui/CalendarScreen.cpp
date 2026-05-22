@@ -117,7 +117,7 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
 
         // Navigation hint (right side)
         const char* hint = "UP/DN:month  BACK:exit";
-        uint16_t hintW = (uint16_t)(strlen(hint) * FONT5X7_ADVANCE * 1);
+        uint16_t hintW = (uint16_t)(strlen(hint) * _display.charAdvance(1));
         _display.drawText(fb, dispW - hintW - 4, 8, hint, false, 1);
 
         // Header separator
@@ -130,7 +130,7 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
             {"Mo","Tu","We","Th","Fr","Sa","Su"};
         uint16_t colW = dispW / NCOLS;
         for (uint8_t col = 0; col < NCOLS; col++) {
-            uint16_t labelW = (uint16_t)(2 * FONT5X7_ADVANCE * SCALE);
+            uint16_t labelW = (uint16_t)(2 * _display.charAdvance(SCALE));
             uint16_t x = col * colW + (colW - labelW) / 2;
             _display.drawText(fb, x, DOW_Y + 4, DOW_LABELS[col], false, SCALE);
         }
@@ -182,10 +182,10 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
                     // Day number in white (inverted)
                     char dayStr[3];
                     snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
-                    uint16_t numW = (uint16_t)(strlen(dayStr) * FONT5X7_ADVANCE * SCALE);
+                    uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
                     _display.drawText(fb,
                         cellX + (colW - numW) / 2,
-                        cellY + (rowH - FONT5X7_LINE_H * SCALE) / 2,
+                        cellY + (rowH - _display.lineHeight(SCALE)) / 2,
                         dayStr, true, SCALE);
                 } else if (isToday) {
                     // Today: draw a border square
@@ -200,19 +200,19 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
                     // Day number
                     char dayStr[3];
                     snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
-                    uint16_t numW = (uint16_t)(strlen(dayStr) * FONT5X7_ADVANCE * SCALE);
+                    uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
                     _display.drawText(fb,
                         cellX + (colW - numW) / 2,
-                        cellY + (rowH - FONT5X7_LINE_H * SCALE) / 2,
+                        cellY + (rowH - _display.lineHeight(SCALE)) / 2,
                         dayStr, false, SCALE);
                 } else {
                     // Empty day: just draw the day number
                     char dayStr[3];
                     snprintf(dayStr, sizeof(dayStr), "%u", dayNum);
-                    uint16_t numW = (uint16_t)(strlen(dayStr) * FONT5X7_ADVANCE * SCALE);
+                    uint16_t numW = (uint16_t)(strlen(dayStr) * _display.charAdvance(SCALE));
                     _display.drawText(fb,
                         cellX + (colW - numW) / 2,
-                        cellY + (rowH - FONT5X7_LINE_H * SCALE) / 2,
+                        cellY + (rowH - _display.lineHeight(SCALE)) / 2,
                         dayStr, false, SCALE);
                 }
 
@@ -225,6 +225,6 @@ void CalendarScreen::_render(uint16_t year, uint8_t month,
         snprintf(cntBuf, sizeof(cntBuf), "%u entr%s this month",
                  (unsigned)paths.size(),
                  paths.size() == 1 ? "y" : "ies");
-        _display.drawText(fb, 4, dispH - FONT5X7_LINE_H * 1 - 4, cntBuf, false, 1);
+        _display.drawText(fb, 4, dispH - _display.lineHeight(1) - 4, cntBuf, false, 1);
     }
 }
