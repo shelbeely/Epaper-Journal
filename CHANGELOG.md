@@ -17,6 +17,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `/api/vault/unlock` now returns HTTP 429 with `Retry-After` when the vault is temporarily locked and reports the remaining wait time.
 - Increased vault PIN key-derivation cost to PBKDF2-SHA256 with 100,000 iterations for new vault ciphertext.
 - Added legacy vault migration so `---vault-v1---` (10k-iteration) content is transparently re-encrypted as `---vault-v2---` after successful unlock.
+- Vault unlock now uses a challenge-response flow: `GET /api/vault/challenge`
+  returns a single-use 32-byte nonce; `POST /api/vault/unlock` accepts
+  `{"response":"<hex(SHA256(nonce+pin))>"}` so the raw PIN is never sent over
+  HTTP.  The server brute-forces the 4-digit space to match the response and
+  then derives the key, keeping PBKDF2 as the key-stretching primitive.
+- Web UI vault panel updated to perform the two-step unlock flow using the
+  Web Crypto API (`crypto.subtle.digest`).
+- Nonces are single-use and expire after 60 seconds.
 
 ## [0.1.0] - 2026-05-20
 
