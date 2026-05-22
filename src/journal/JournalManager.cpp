@@ -11,6 +11,10 @@ JournalManager::JournalManager(X4Storage& storage, X4Clock& clock,
     : _storage(storage), _clock(clock), _vault(vault)
 {}
 
+void JournalManager::begin() {
+    cleanupOrphanTempFiles();
+}
+
 String JournalManager::createEntry(const String& title) {
     if (!_storage.ready()) return "";
 
@@ -62,7 +66,13 @@ bool JournalManager::saveEntry(const String& path, const JournalEntry& entry) {
     }
     // else: vault nullptr or entry is plaintext → save as-is
 
-    return _storage.writeEntry(path.c_str(), content);
+    String tmpPath = path + ".tmp";
+    if (!_storage.writeEntry(tmpPath.c_str(), content)) return false;
+    if (!_storage.raw().rename(tmpPath.c_str(), path.c_str())) {
+        _storage.raw().remove(tmpPath.c_str());
+        return false;
+    }
+    return true;
 }
 
 bool JournalManager::loadEntry(const String& path, JournalEntry& out) {
@@ -193,4 +203,24 @@ String JournalManager::labelFromFilename(const String& path) {
 /*static*/
 void JournalManager::_journalDir(char* buf, uint16_t year, uint8_t month) {
     snprintf(buf, 24, "/journal/%04u/%02u/", year, month);
+}
+
+void JournalManager::cleanupOrphanTempFiles() {
+    if (!_storage.ready()) return;
+
+    uint16_t curYear; uint8_t dummy;
+    _clock.currentYearMonth(curYear, dummy);
+
+    for (uint16_t y = 2020; y <= curYear + 1; y++) {
+        for (uint8_t m = 1; m <= 12; m++) {
+            char dir[24];
+            _journalDir(dir, y, m);
+            auto names = _storage.raw().listFiles(dir);
+            for (const auto& name : names) {
+                if (!name.endsWith(".tmp")) continue;
+                String fullPath = String(dir) + name;
+                _storage.raw().remove(fullPath.c_str());
+            }
+        }
+    }
 }

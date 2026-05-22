@@ -16,6 +16,9 @@ public:
     JournalManager(X4Storage& storage, X4Clock& clock,
                    VaultManager* vault = nullptr);
 
+    // Startup hook for journal housekeeping.
+    void begin();
+
     // Create a new entry with the given title.
     // Auto-generates a filename from the current timestamp.
     // Encrypts the file if the vault is unlocked.
@@ -61,4 +64,6 @@ private:
 
     // Build "/journal/YYYY/MM/" directory path into buf (≥ 24 chars).
     static void _journalDir(char* buf, uint16_t year, uint8_t month);
+
+    void cleanupOrphanTempFiles();
 };

@@ -10,6 +10,7 @@
 #include "SdFat.h"
 #include <vector>
 #include <string>
+#include <map>
 
 class SDCardManager {
 public:
@@ -21,14 +22,28 @@ public:
     static bool _stubReady;           // return value for ready()
     static bool _stubEnsureDir;       // return value for ensureDirectoryExists()
     static bool _stubWrite;           // return value for writeFile()
+    static bool _stubRename;          // return value for rename()
+    static bool _stubRemove;          // return value for remove()
     static String _stubReadContent;   // return value for readFile()
+    static std::vector<String> _stubListFilesDefault;
+    static std::map<std::string, std::vector<String>> _stubListFilesByPath;
+    static String _stubLastWritePath;
+    static String _stubLastWriteContent;
+    static int _stubWriteCallCount;
+    static String _stubLastRenameSrc;
+    static String _stubLastRenameDst;
+    static int _stubRenameCallCount;
+    static std::vector<String> _stubRemovedPaths;
 
     bool begin()        { return false; }
     bool ready() const  { return _stubReady; }
 
-    std::vector<String> listFiles(const char* /*path*/ = "/",
+    std::vector<String> listFiles(const char* path = "/",
                                   int /*maxFiles*/     = 200) {
-        return {};
+        const std::string key(path ? path : "");
+        auto it = _stubListFilesByPath.find(key);
+        if (it != _stubListFilesByPath.end()) return it->second;
+        return _stubListFilesDefault;
     }
     String readFile(const char* /*path*/) { return _stubReadContent; }
     bool   readFileToStream(const char* /*path*/, Print& /*out*/,
@@ -37,7 +52,10 @@ public:
                             size_t /*bufSize*/, size_t /*maxBytes*/ = 0) {
         return 0;
     }
-    bool writeFile(const char* /*path*/, const String& /*content*/) {
+    bool writeFile(const char* path, const String& content) {
+        _stubLastWritePath = String(path);
+        _stubLastWriteContent = content;
+        _stubWriteCallCount++;
         return _stubWrite;
     }
     bool ensureDirectoryExists(const char* /*path*/) { return _stubEnsureDir; }
@@ -47,9 +65,17 @@ public:
     }
     bool mkdir(const char* /*path*/, bool /*pFlag*/ = true) { return false; }
     bool exists(const char* /*path*/) { return false; }
-    bool remove(const char* /*path*/) { return false; }
+    bool remove(const char* path) {
+        _stubRemovedPaths.push_back(String(path));
+        return _stubRemove;
+    }
     bool rmdir(const char* /*path*/)  { return false; }
-    bool rename(const char* /*src*/, const char* /*dst*/) { return false; }
+    bool rename(const char* src, const char* dst) {
+        _stubLastRenameSrc = String(src);
+        _stubLastRenameDst = String(dst);
+        _stubRenameCallCount++;
+        return _stubRename;
+    }
 
     bool openFileForRead(const char* /*mod*/, const char* /*path*/,
                          FsFile& /*f*/) { return false; }
@@ -80,7 +106,18 @@ inline SDCardManager SDCardManager::_instance;
 inline bool   SDCardManager::_stubReady        = false;
 inline bool   SDCardManager::_stubEnsureDir    = false;
 inline bool   SDCardManager::_stubWrite        = false;
+inline bool   SDCardManager::_stubRename       = true;
+inline bool   SDCardManager::_stubRemove       = false;
 inline String SDCardManager::_stubReadContent;
+inline std::vector<String> SDCardManager::_stubListFilesDefault;
+inline std::map<std::string, std::vector<String>> SDCardManager::_stubListFilesByPath;
+inline String SDCardManager::_stubLastWritePath;
+inline String SDCardManager::_stubLastWriteContent;
+inline int SDCardManager::_stubWriteCallCount = 0;
+inline String SDCardManager::_stubLastRenameSrc;
+inline String SDCardManager::_stubLastRenameDst;
+inline int SDCardManager::_stubRenameCallCount = 0;
+inline std::vector<String> SDCardManager::_stubRemovedPaths;
 
 // Match the macro from the real SDCardManager.h
 #define SdMan SDCardManager::getInstance()

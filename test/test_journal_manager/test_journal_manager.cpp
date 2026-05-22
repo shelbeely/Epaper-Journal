@@ -23,8 +23,25 @@
 #include "system/X4Clock.cpp"           // NOLINT
 
 #include <unity.h>
+#include <algorithm>
 
-void setUp(void)    {}
+void setUp(void) {
+    SDCardManager::_stubReady = false;
+    SDCardManager::_stubEnsureDir = false;
+    SDCardManager::_stubWrite = false;
+    SDCardManager::_stubRename = false;
+    SDCardManager::_stubRemove = false;
+    SDCardManager::_stubReadContent = String("");
+    SDCardManager::_stubListFilesDefault.clear();
+    SDCardManager::_stubListFilesByPath.clear();
+    SDCardManager::_stubLastWritePath = String("");
+    SDCardManager::_stubLastWriteContent = String("");
+    SDCardManager::_stubWriteCallCount = 0;
+    SDCardManager::_stubLastRenameSrc = String("");
+    SDCardManager::_stubLastRenameDst = String("");
+    SDCardManager::_stubRenameCallCount = 0;
+    SDCardManager::_stubRemovedPaths.clear();
+}
 void tearDown(void) {}
 
 // ── labelFromFilename ─────────────────────────────────────────────────────────
@@ -109,6 +126,85 @@ void test_list_all_paths_empty_no_files(void) {
     SDCardManager::_stubReady = false;
 }
 
+void test_save_entry_writes_tmp_then_renames(void) {
+    SDCardManager::_stubWrite = true;
+    SDCardManager::_stubRename = true;
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+
+    JournalEntry e;
+    e.title = "Atomic";
+    e.date = "2026-05-22T00:00:00Z";
+    e.body = "Body";
+
+    const String path = "/journal/2026/05/20260522-000000.md";
+    const bool ok = jm.saveEntry(path, e);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_INT(1, SDCardManager::_stubWriteCallCount);
+    TEST_ASSERT_EQUAL_INT(1, SDCardManager::_stubRenameCallCount);
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260522-000000.md.tmp",
+                             SDCardManager::_stubLastWritePath.c_str());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260522-000000.md.tmp",
+                             SDCardManager::_stubLastRenameSrc.c_str());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260522-000000.md",
+                             SDCardManager::_stubLastRenameDst.c_str());
+}
+
+void test_save_entry_cleans_tmp_when_rename_fails(void) {
+    SDCardManager::_stubWrite = true;
+    SDCardManager::_stubRename = false;
+    SDCardManager::_stubRemove = true;
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+
+    JournalEntry e;
+    e.title = "Atomic";
+    e.date = "2026-05-22T00:00:00Z";
+    e.body = "Body";
+
+    const String path = "/journal/2026/05/20260522-000000.md";
+    const bool ok = jm.saveEntry(path, e);
+
+    TEST_ASSERT_FALSE(ok);
+    TEST_ASSERT_EQUAL_INT(1, SDCardManager::_stubRenameCallCount);
+    TEST_ASSERT_EQUAL_INT(1, (int)SDCardManager::_stubRemovedPaths.size());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260522-000000.md.tmp",
+                             SDCardManager::_stubRemovedPaths[0].c_str());
+}
+
+void test_begin_removes_orphaned_tmp_files(void) {
+    SDCardManager::_stubReady = true;
+    SDCardManager::_stubRemove = true;
+
+    X4Storage storage;
+    X4Clock clock;
+    uint16_t year; uint8_t month;
+    clock.currentYearMonth(year, month);
+
+    char monthDir[24];
+    snprintf(monthDir, sizeof(monthDir), "/journal/%04u/%02u/", year, month);
+    SDCardManager::_stubListFilesByPath[std::string(monthDir)] = {
+            "20260522-000001.md.tmp", "20260522-000002.md", "stale.tmp"};
+
+    JournalManager jm(storage, clock, nullptr);
+    jm.begin();
+
+    TEST_ASSERT_EQUAL_INT(2, (int)SDCardManager::_stubRemovedPaths.size());
+    String expectedA = String(monthDir) + "20260522-000001.md.tmp";
+    String expectedB = String(monthDir) + "stale.tmp";
+    TEST_ASSERT_TRUE(std::find(SDCardManager::_stubRemovedPaths.begin(),
+                               SDCardManager::_stubRemovedPaths.end(),
+                               expectedA) !=
+                     SDCardManager::_stubRemovedPaths.end());
+    TEST_ASSERT_TRUE(std::find(SDCardManager::_stubRemovedPaths.begin(),
+                               SDCardManager::_stubRemovedPaths.end(),
+                               expectedB) !=
+                     SDCardManager::_stubRemovedPaths.end());
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -124,6 +220,9 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_label_filename_no_extension);
     RUN_TEST(test_list_all_paths_empty_when_not_ready);
     RUN_TEST(test_list_all_paths_empty_no_files);
+    RUN_TEST(test_save_entry_writes_tmp_then_renames);
+    RUN_TEST(test_save_entry_cleans_tmp_when_rename_fails);
+    RUN_TEST(test_begin_removes_orphaned_tmp_files);
 
     return UNITY_END();
 }
