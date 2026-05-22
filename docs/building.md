@@ -383,6 +383,42 @@ before each `dev` / `release` build via the PlatformIO `extra_scripts` hook:
 python3 tools/embed_ui.py
 ```
 
+## Off-device UI preview
+
+`tools/serve_ui.py` is a zero-dependency Python 3 dev server that serves
+`data/index.html` backed by an in-memory mock journal store.  Use it to
+develop and preview the web UI without a physical device.
+
+```bash
+python3 tools/serve_ui.py          # default port 8080
+python3 tools/serve_ui.py --port 3000
+```
+
+Then open `http://localhost:8080` in a browser.  The mock store starts with
+several sample entries spread across the last two months so you can navigate
+between months, open and edit entries, create new ones, and test the export
+flow — all in memory for the lifetime of the server process.  Edits are not
+persisted to disk.
+
+### Screenshots for documentation
+
+With the dev server running, use any browser screenshot tool or a headless
+browser to capture the UI.  For example with Playwright (one-off, no install
+needed):
+
+```bash
+npx playwright screenshot --browser chromium \
+  "http://localhost:8080" docs/screenshots/web-ui-list.png
+```
+
+For on-device e-ink screenshots once hardware is available, use the HTTP API:
+
+```bash
+curl -o docs/screenshots/eink-browse.bmp http://<device-ip>/api/display/screenshot.bmp
+# Convert to PNG with ImageMagick if needed:
+magick docs/screenshots/eink-browse.bmp docs/screenshots/eink-browse.png
+```
+
 ## community-sdk
 
 The firmware depends on the [OpenX4 E-Paper Community SDK](https://github.com/open-x4-epaper/community-sdk)
