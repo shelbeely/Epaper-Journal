@@ -5,10 +5,12 @@
 #include "WebApi.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <array>
 #include <memory>
 #include <time.h>
 #include <vector>
 #include "../config.h"
+#include "../journal/JournalExport.h"
 #include "../journal/JournalManager.h"
 #include "../journal/JournalFrontmatter.h"
 #include "../wifi/WifiProvisioning.h"
@@ -746,6 +748,26 @@ void WebApi::_registerJournalRoutes() {
             req->send(201, "application/json", out);
         }
     );
+
+    // GET /api/journal/export[?encrypted=1]
+    _server.on("/api/journal/export", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        bool exportEncrypted =
+            req->hasParam("encrypted") &&
+            req->getParam("encrypted")->value() == "1";
+
+        auto streamer =
+            std::make_shared<JournalZipStreamer>(_jm, _vault, exportEncrypted);
+        AsyncWebServerResponse* resp = req->beginResponse(
+            "application/zip",
+            streamer->totalSize(),
+            [streamer](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+                return streamer->fill(buffer, maxLen, index);
+            });
+        resp->addHeader("Content-Disposition",
+                        "attachment; filename=\"" +
+                        JournalExport::backupFilename(time(nullptr)) + "\"");
+        req->send(resp);
+    });
 }
 
 // ── Vault routes ──────────────────────────────────────────────────────────────

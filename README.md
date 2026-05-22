@@ -211,7 +211,7 @@ The `open-x4-sdk/` submodule provides board-level drivers. Everything in `src/` 
 | 2 — Web Editor | ✅ v0.1.0 | Soft-AP web editing workflow |
 | 3 — Journal UX | ✅ v0.1.0 | Prompt packs, streak calendar, sleep screen |
 | 4 — Privacy Mode | ✅ v0.1.0 | AES-GCM encrypted vault, PIN entry, vault routes |
-| 5 — Companion Tools | 🚧 In progress | PWA, export, and backup follow-up work |
+| 5 — Companion Tools | 🚧 In progress | PWA follow-up work; web ZIP backup export is now available |
 
 Full release notes: [CHANGELOG.md](CHANGELOG.md)
 

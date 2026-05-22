@@ -43,29 +43,9 @@ main{flex:1;overflow:hidden;display:flex}
 #delete-btn{padding:10px 16px;background:#a54a4a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.95rem}
 #delete-btn:hover{background:#952a2a}
 #delete-btn:disabled{opacity:.4;cursor:default}
-/* Vault panel */
-#vault-btn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:.85rem;margin-left:8px}
-#vault-btn:hover{background:rgba(255,255,255,.15)}
-#vault-panel{width:100%;display:none;flex-direction:column;overflow-y:auto;padding:16px}
-#vault-panel.visible{display:flex}
-.vault-section{margin-bottom:20px;background:#fff;border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.vault-section h2{font-size:1rem;margin-bottom:10px;color:#333}
-.vault-section p{font-size:.85rem;color:#555;margin-bottom:10px}
-#pin-input{width:8em;border:1px solid #ccc;border-radius:4px;padding:7px 10px;font-size:1.1rem;letter-spacing:.2em;text-align:center}
-
+/* Export/Backup */
 #export-btn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:.85rem;margin-left:8px}
 #export-btn:hover{background:rgba(255,255,255,.15)}
-#export-panel{width:100%;display:none;flex-direction:column;overflow-y:auto;padding:16px}
-#export-panel.visible{display:flex}
-.export-section{margin-bottom:20px;background:#fff;border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.export-section h2{font-size:1rem;margin-bottom:10px;color:#333}
-.export-section p{font-size:.85rem;color:#555;margin-bottom:10px}
-.exp-btn{padding:9px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.9rem;color:#fff}
-.exp-btn.green{background:#5a8a5a}.exp-btn.green:hover{background:#4a7a4a}
-.exp-btn.blue{background:#4a6fa5}.exp-btn.blue:hover{background:#3a5f95}
-.exp-btn.back{background:#777;margin-bottom:12px}.exp-btn.back:hover{background:#555}
-.exp-row{display:flex;gap:8px;flex-wrap:wrap}
-.exp-field{flex:1;min-width:0;border:1px solid #ccc;border-radius:4px;padding:7px 10px;font-size:.9rem}
 </style>
 </head>
 <body>
@@ -77,8 +57,7 @@ main{flex:1;overflow:hidden;display:flex}
       <span id="monthLabel">&#8230;</span>
       <button class="nav-btn" id="next-btn">&#8250;</button>
     </div>
-    <button id="export-btn" title="Export &amp; Backup">&#128190;</button>
-    <button id="vault-btn" title="Vault">&#128274;</button>
+    <button id="export-btn" title="Download a ZIP backup">Export All</button>
   </div>
 </header>
 <div id="msg"></div>
@@ -101,46 +80,6 @@ main{flex:1;overflow:hidden;display:flex}
     <div class="ed-footer">
       <button id="save-btn">Save</button>
       <button id="delete-btn">Delete</button>
-    </div>
-  </div>
-  <!-- Export & Backup panel -->
-  <div id="export-panel">
-    <button class="exp-btn back" id="export-back-btn">&#8592; Back</button>
-    <div class="export-section">
-      <h2>&#128190; Full Backup Export</h2>
-      <p>Download every journal entry as a ZIP backup. If the vault is unlocked, encrypted entries are exported decrypted; otherwise they stay encrypted.</p>
-      <button class="exp-btn green" id="export-all-btn">Export All</button>
-    </div>
-    <div class="export-section">
-      <h2>&#129303; GitHub Gist Backup</h2>
-      <p>Back up all your entries to a private GitHub Gist. Your token is stored only in this browser and is never sent to the device.</p>
-      <div class="exp-row" style="margin-bottom:8px">
-        <input class="exp-field" id="gh-token" type="password" placeholder="GitHub Personal Access Token (gist scope)">
-      </div>
-      <div class="exp-row" style="margin-bottom:10px">
-        <input class="exp-field" id="gh-gist-id" type="text" placeholder="Gist ID (leave blank to create new)">
-      </div>
-      <div class="exp-row">
-        <button class="exp-btn blue" id="gist-btn">Backup to Gist</button>
-        <button class="exp-btn green" id="gist-save-btn">Save token</button>
-      </div>
-    </div>
-  </div>
-  <!-- Vault panel -->
-  <div id="vault-panel">
-    <button class="exp-btn back" id="vault-back-btn">&#8592; Back</button>
-    <div class="vault-section">
-      <h2 id="vault-status-title">&#128274; Vault</h2>
-      <p id="vault-status-text">Checking vault status&#8230;</p>
-      <div id="vault-unlock-form">
-        <div class="exp-row" style="margin-bottom:8px;align-items:center;gap:8px">
-          <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="PIN">
-          <button class="exp-btn blue" id="vault-unlock-btn">Unlock</button>
-        </div>
-      </div>
-      <div id="vault-lock-form" style="display:none">
-        <button class="exp-btn back" id="vault-lock-btn">Lock vault</button>
-      </div>
     </div>
   </div>
 </main>
@@ -256,173 +195,9 @@ function insertHeading(){
   var lineStart=ta.value.lastIndexOf('\n',s-1)+1;
   ta.setRangeText('## ',lineStart,lineStart,'end');ta.focus();
 }
-// ── Panel helpers ────────────────────────────────────────────────────────────
-function showPanel(id){
-  ['list-panel','editor-panel','export-panel','vault-panel'].forEach(function(pid){
-    var el=document.getElementById(pid);
-    if(pid==='editor-panel'){el.classList.remove('visible');}
-    else{el.style.display='none';}
-  });
-  var target=document.getElementById(id);
-  if(id==='editor-panel'){target.classList.add('visible');}
-  else{target.style.display='flex';}
-}
-// ── Export / Backup ──────────────────────────────────────────────────────────
-document.getElementById('export-btn').onclick=function(){showPanel('export-panel');};
-document.getElementById('export-back-btn').onclick=function(){showPanel('list-panel');loadList();};
-
-// Minimal client-side POSIX tar builder
-function buildTar(files){
-  // files = [{name: String, content: String}]
-  var enc=new TextEncoder();
-  var blocks=[];
-  function hdrBlock(name,size){
-    var h=new Uint8Array(512);
-    function setStr(off,len,str){
-      var b=enc.encode(str.slice(0,len));
-      for(var i=0;i<b.length&&i<len;i++)h[off+i]=b[i];
-    }
-    function setOctal(off,len,val){setStr(off,len,val.toString(8).padStart(len-1,'0'));}
-    setStr(0,100,name);
-    setStr(100,8,'0000644');
-    setStr(108,8,'0000000');
-    setStr(116,8,'0000000');
-    setOctal(124,12,size);
-    setOctal(136,12,Math.floor(Date.now()/1000));
-    h[156]=48; // '0' regular file
-    setStr(257,6,'ustar ');
-    setStr(263,2,' ');
-    // Checksum
-    var sum=256; // 8 space bytes counted as 0x20*8=256
-    for(var i=0;i<512;i++)if(i<148||i>=156)sum+=h[i];
-    setStr(148,8,sum.toString(8).padStart(6,'0')+'\0 ');
-    return h;
-  }
-  function padBlock(data){
-    var padded=new Uint8Array(Math.ceil(data.length/512)*512);
-    padded.set(data);return padded;
-  }
-  files.forEach(function(f){
-    var data=enc.encode(f.content);
-    blocks.push(hdrBlock(f.name,data.length));
-    if(data.length>0)blocks.push(padBlock(data));
-  });
-  blocks.push(new Uint8Array(1024)); // two zero blocks = end of archive
-  var total=blocks.reduce(function(s,b){return s+b.length;},0);
-  var out=new Uint8Array(total);var off=0;
-  blocks.forEach(function(b){out.set(b,off);off+=b.length;});
-  return out;
-}
-
-document.getElementById('export-all-btn').onclick=function(){
-  var a=document.createElement('a');
-  a.href='/api/journal/export';
-  a.click();
-  showMsg('Backup download started.',false);
-};
-
-// Save / load token from localStorage
-(function(){
-  var t=localStorage.getItem('gh_token');
-  var g=localStorage.getItem('gh_gist_id');
-  if(t)document.getElementById('gh-token').value=t;
-  if(g)document.getElementById('gh-gist-id').value=g;
-})();
-document.getElementById('gist-save-btn').onclick=function(){
-  localStorage.setItem('gh_token',document.getElementById('gh-token').value.trim());
-  localStorage.setItem('gh_gist_id',document.getElementById('gh-gist-id').value.trim());
-  showMsg('Token saved in browser.',false);
-};
-
-document.getElementById('gist-btn').onclick=function(){
-  var token=document.getElementById('gh-token').value.trim();
-  var gistId=document.getElementById('gh-gist-id').value.trim();
-  if(!token){showMsg('Enter a GitHub token first.',true);return;}
-  showMsg('Fetching entries…',false);
-  fetch('/api/export/all')
-    .then(function(r){return r.ok?r.json():Promise.reject('HTTP '+r.status);})
-    .then(function(entries){
-      var gistFiles={};
-      entries.forEach(function(e){
-        if(e.locked)return;
-        var fm='---\ntitle: '+e.title+'\ndate: '+e.date+(e.tags?'\ntags: '+e.tags:'')+'\n---\n';
-        gistFiles[e.filename||'entry.md']={content:fm+(e.body||'')};
-      });
-      if(!Object.keys(gistFiles).length){showMsg('No unlocked entries to backup.',true);return;}
-      var url=gistId?'https://api.github.com/gists/'+gistId:'https://api.github.com/gists';
-      var method=gistId?'PATCH':'POST';
-      var body={description:'eJournal Backup',public:false,files:gistFiles};
-      showMsg('Uploading to GitHub…',false);
-      return fetch(url,{method:method,headers:{'Authorization':'token '+token,'Content-Type':'application/json'},body:JSON.stringify(body)})
-        .then(function(r){return r.ok?r.json():r.json().then(function(j){return Promise.reject(j.message||'GitHub error');});})
-        .then(function(j){
-          var id=j.id||gistId;
-          document.getElementById('gh-gist-id').value=id;
-          localStorage.setItem('gh_gist_id',id);
-          showMsg('Backed up '+(Object.keys(gistFiles).length)+' entries → gist.github.com/'+id,false);
-        });
-    })
-    .catch(function(e){showMsg('Backup failed: '+e,true);});
-};
-// ── Vault ────────────────────────────────────────────────────────────────────
-function hexToBytes(hex){
-  var arr=new Uint8Array(hex.length/2);
-  for(var i=0;i<arr.length;i++)arr[i]=parseInt(hex.substr(i*2,2),16);
-  return arr;
-}
-function bytesToHex(buf){
-  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-}
-function refreshVaultStatus(){
-  fetch('/api/vault/status')
-    .then(function(r){return r.ok?r.json():Promise.reject();})
-    .then(function(j){
-      var locked=j.locked;
-      document.getElementById('vault-status-title').textContent=locked?'\uD83D\uDD12 Vault (locked)':'\uD83D\uDD13 Vault (unlocked)';
-      document.getElementById('vault-status-text').textContent=locked?'Enter your 4-digit PIN to unlock the vault.':'The vault is unlocked.';
-      document.getElementById('vault-unlock-form').style.display=locked?'block':'none';
-      document.getElementById('vault-lock-form').style.display=locked?'none':'block';
-    })
-    .catch(function(){showMsg('Could not fetch vault status.',true);});
-}
-document.getElementById('vault-btn').onclick=function(){showPanel('vault-panel');refreshVaultStatus();};
-document.getElementById('vault-back-btn').onclick=function(){showPanel('list-panel');loadList();};
-document.getElementById('vault-unlock-btn').onclick=function(){
-  var pin=document.getElementById('pin-input').value.trim();
-  if(!/^\d{4}$/.test(pin)){showMsg('PIN must be exactly 4 digits.',true);return;}
-  showMsg('Contacting device\u2026',false);
-  fetch('/api/vault/challenge')
-    .then(function(r){return r.ok?r.json():Promise.reject('challenge failed');})
-    .then(function(j){
-      var nonce=hexToBytes(j.nonce);
-      var pinBytes=new TextEncoder().encode(pin);
-      var combined=new Uint8Array(nonce.length+pinBytes.length);
-      combined.set(nonce);combined.set(pinBytes,nonce.length);
-      return crypto.subtle.digest('SHA-256',combined);
-    })
-    .then(function(hashBuf){
-      var responseHex=bytesToHex(hashBuf);
-      return fetch('/api/vault/unlock',{method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({response:responseHex})});
-    })
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok,body:j};});})
-    .then(function(res){
-      if(res.ok){
-        document.getElementById('pin-input').value='';
-        showMsg('Vault unlocked.',false);
-        refreshVaultStatus();
-      }else{
-        showMsg('Unlock failed: '+(res.body.error||'unknown error'),true);
-      }
-    })
-    .catch(function(e){showMsg('Unlock error: '+e,true);});
-};
-document.getElementById('vault-lock-btn').onclick=function(){
-  fetch('/api/vault/lock',{method:'POST'})
-    .then(function(r){return r.json();})
-    .then(function(){showMsg('Vault locked.',false);refreshVaultStatus();})
-    .catch(function(){showMsg('Lock failed.',true);});
+document.getElementById('export-btn').onclick=function(){
+  showMsg('Preparing backup download…',false);
+  window.location.href='/api/journal/export';
 };
 // ── Service Worker ────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator){

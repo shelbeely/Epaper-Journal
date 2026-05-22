@@ -216,6 +216,32 @@ curl -X POST http://192.168.4.1/api/journal/new \
 # → 201  {"path":"/journal/2026/05/20260520-103000.md"}
 ```
 
+### Backup and restore workflow
+
+Use the **Export All** button in the web UI to download a ZIP archive containing
+every journal file from the SD card. The archive preserves the `journal/YYYY/MM/`
+folder layout so it can be unpacked directly as a backup copy.
+
+By default, vault entries are exported as decrypted Markdown when the vault is
+already unlocked. If the vault is locked, those files remain in their raw
+encrypted on-disk form so the backup is still complete.
+
+```bash
+# Standard backup download
+curl -OJ http://192.168.4.1/api/journal/export
+
+# Force raw encrypted export for vault entries (no unlock required)
+curl -OJ "http://192.168.4.1/api/journal/export?encrypted=1"
+```
+
+To restore from a backup:
+
+1. Unzip the archive on your computer.
+2. Copy the extracted `journal/` directory back to the root of the device SD card.
+3. Reinsert the SD card or reboot the device so it rescans the journal files.
+4. If you restored encrypted vault entries, unlock the vault with the original PIN
+   before opening them.
+
 ## Phase 3 — Journal UX features
 
 ### Writing prompt packs
