@@ -17,6 +17,13 @@
 
 class VaultManager {
 public:
+    enum class UnlockResult : uint8_t {
+        Success,
+        InvalidPin,
+        LockedOut,
+        Error,
+    };
+
     VaultManager();
     ~VaultManager();
 
@@ -24,6 +31,14 @@ public:
     // NVS-persisted salt. Creates and saves the salt on first call.
     // Returns true on success; the vault is unlocked after a successful call.
     bool deriveKeyFromPin(const char* pin);
+
+    // Outcome of the most recent deriveKeyFromPin() call.
+    UnlockResult lastUnlockResult() const;
+
+    // Failed-attempt / lockout state persisted in NVS.
+    bool isUnlockLockedOut() const;
+    uint32_t unlockRetryAfterSeconds() const;
+    uint32_t failedUnlockAttempts() const;
 
     // Zero out the in-memory key. The vault is locked after this call.
     void lock();
@@ -46,9 +61,26 @@ public:
     static constexpr const char* VAULT_HEADER = "---vault-v1---\n";
 
 private:
+    struct LockState {
+        uint32_t failedAttempts = 0;
+        uint32_t lockoutUntil   = 0;
+    };
+
     uint8_t _key[32];
+    UnlockResult _lastUnlockResult = UnlockResult::Error;
 
     // Load (or generate + save) the 16-byte PBKDF2 salt from NVS.
     // Returns true on success.
     bool _loadOrCreateSalt(uint8_t salt[16]);
+
+    bool _loadPinVerifier(uint8_t* verifier, size_t len);
+    bool _storePinVerifier(const uint8_t key[32]);
+    bool _verifyDerivedKey(const uint8_t key[32], bool& matched);
+
+    LockState _loadLockState() const;
+    bool _saveLockState(const LockState& state) const;
+    void _resetLockState();
+    void _recordFailedAttempt();
+    uint32_t _nowSeconds() const;
+    uint32_t _retryAfterSeconds(const LockState& state) const;
 };

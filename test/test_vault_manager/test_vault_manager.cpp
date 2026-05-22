@@ -14,7 +14,10 @@
 #include <unity.h>
 #include <string.h>
 
-void setUp(void)  {}
+void setUp(void)  {
+    Preferences::reset();
+    setMillis(0);
+}
 void tearDown(void) {}
 
 // ── isEncryptedContent ────────────────────────────────────────────────────────
@@ -151,6 +154,90 @@ void test_wrong_key_decrypt_fails(void) {
     TEST_ASSERT_TRUE(result.isEmpty());
 }
 
+void test_wrong_pin_increments_failed_attempt_counter(void) {
+    VaultManager vm;
+    TEST_ASSERT_TRUE(vm.deriveKeyFromPin("1234"));
+    vm.lock();
+
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("4321"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::InvalidPin,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_EQUAL_UINT32(1, vm.failedUnlockAttempts());
+    TEST_ASSERT_FALSE(vm.isUnlockLockedOut());
+
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("9999"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::InvalidPin,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_EQUAL_UINT32(2, vm.failedUnlockAttempts());
+    TEST_ASSERT_FALSE(vm.isUnlockLockedOut());
+}
+
+void test_third_failed_pin_attempt_triggers_30_second_lockout(void) {
+    VaultManager vm;
+    TEST_ASSERT_TRUE(vm.deriveKeyFromPin("1234"));
+    vm.lock();
+
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::LockedOut,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_TRUE(vm.isUnlockLockedOut());
+    TEST_ASSERT_EQUAL_UINT32(3, vm.failedUnlockAttempts());
+    TEST_ASSERT_EQUAL_UINT32(30, vm.unlockRetryAfterSeconds());
+}
+
+void test_lockout_blocks_unlock_until_retry_after_elapses(void) {
+    VaultManager vm;
+    TEST_ASSERT_TRUE(vm.deriveKeyFromPin("2468"));
+    vm.lock();
+
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("1111"));
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("1111"));
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("1111"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::LockedOut,
+                          (int)vm.lastUnlockResult());
+
+    advanceMillis(15000);
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("2468"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::LockedOut,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_EQUAL_UINT32(15, vm.unlockRetryAfterSeconds());
+
+    advanceMillis(15000);
+    TEST_ASSERT_TRUE(vm.deriveKeyFromPin("2468"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::Success,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_EQUAL_UINT32(0, vm.failedUnlockAttempts());
+    TEST_ASSERT_FALSE(vm.isUnlockLockedOut());
+}
+
+void test_lockout_window_escalates_to_five_minutes_then_one_hour(void) {
+    VaultManager vm;
+    TEST_ASSERT_TRUE(vm.deriveKeyFromPin("1357"));
+    vm.lock();
+
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_EQUAL_UINT32(30, vm.unlockRetryAfterSeconds());
+
+    advanceMillis(30000);
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::LockedOut,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_EQUAL_UINT32(4, vm.failedUnlockAttempts());
+    TEST_ASSERT_EQUAL_UINT32(300, vm.unlockRetryAfterSeconds());
+
+    advanceMillis(300000);
+    TEST_ASSERT_FALSE(vm.deriveKeyFromPin("0000"));
+    TEST_ASSERT_EQUAL_INT((int)VaultManager::UnlockResult::LockedOut,
+                          (int)vm.lastUnlockResult());
+    TEST_ASSERT_EQUAL_UINT32(5, vm.failedUnlockAttempts());
+    TEST_ASSERT_EQUAL_UINT32(3600, vm.unlockRetryAfterSeconds());
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -173,6 +260,10 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_roundtrip_frontmatter);
     RUN_TEST(test_roundtrip_lock_unlock);
     RUN_TEST(test_wrong_key_decrypt_fails);
+    RUN_TEST(test_wrong_pin_increments_failed_attempt_counter);
+    RUN_TEST(test_third_failed_pin_attempt_triggers_30_second_lockout);
+    RUN_TEST(test_lockout_blocks_unlock_until_retry_after_elapses);
+    RUN_TEST(test_lockout_window_escalates_to_five_minutes_then_one_hour);
 
     return UNITY_END();
 }

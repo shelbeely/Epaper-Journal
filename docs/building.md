@@ -233,8 +233,8 @@ Three endpoints are always available when the device is on Wi-Fi:
 
 | Method | Path | Body | Description |
 |---|---|---|---|
-| `GET` | `/api/vault/status` | — | `{"locked": true/false}` |
-| `POST` | `/api/vault/unlock` | `{"pin":"1234"}` | Derive key and unlock; returns `{"ok": true}` |
+| `GET` | `/api/vault/status` | — | Returns vault lock state plus failed-attempt / lockout metadata. |
+| `POST` | `/api/vault/unlock` | `{"pin":"1234"}` | Derive key and unlock; returns `{"ok": true}` or HTTP `429` with `Retry-After` while locked out. |
 | `POST` | `/api/vault/lock` | — | Zero the in-memory key; returns `{"ok": true}` |
 
 ```bash
@@ -246,11 +246,16 @@ curl -X POST http://192.168.4.1/api/vault/unlock \
      -H 'Content-Type: application/json' \
      -d '{"pin":"1234"}'
 
+# If the PIN has been tried too many times, the device responds with:
+#   HTTP/1.1 429 Too Many Requests
+#   Retry-After: 30
+#   {"ok":false,"error":"vault_locked","retry_after":30,"failed_attempts":3}
+
 # Lock
 curl -X POST http://192.168.4.1/api/vault/lock
 ```
 
-> **Security note:** The PIN travels over plain HTTP on the soft-AP network. Do not use the same PIN for anything else while the soft-AP is reachable to untrusted devices.
+> **Security note:** The PIN travels over plain HTTP on the soft-AP network. Do not use the same PIN for anything else while the soft-AP is reachable to untrusted devices. Failed unlock attempts are persisted in NVS and escalate through 30 second, 5 minute, and 1 hour lockout windows.
 
 ### Locked entries in browse list
 

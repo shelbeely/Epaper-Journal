@@ -47,24 +47,26 @@ bool PinScreen::run(VaultManager& vault) {
             for (uint8_t i = 0; i < PIN_LEN; i++) pin[i] = '0' + digits[i];
             pin[PIN_LEN] = '\0';
 
-            // Show "UNLOCKING..." feedback
-            uint8_t* fb = _display.getFrameBuffer();
-            uint16_t dispW = _display.width();
-            uint16_t dispH = _display.height();
-            memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
-            _display.drawText(fb, 4, dispH / 2, "UNLOCKING...", false, 2);
-            _display.fastRefresh();
+            _showFeedback("UNLOCKING...", "", 0);
 
             bool ok = vault.deriveKeyFromPin(pin);
 
             if (ok) {
                 return true;
             } else {
-                // Show brief error, then re-draw PIN screen
-                memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
-                _display.drawText(fb, 4, dispH / 2, "KEY DERIVATION FAILED", false, 2);
-                _display.fastRefresh();
-                delay(1500);
+                char retryText[32] = {0};
+                switch (vault.lastUnlockResult()) {
+                case VaultManager::UnlockResult::InvalidPin:
+                    _showFeedback("INVALID PIN", "TRY AGAIN", 1500);
+                    break;
+                case VaultManager::UnlockResult::LockedOut:
+                    _formatRetryAfter(vault.unlockRetryAfterSeconds(), retryText, sizeof(retryText));
+                    _showFeedback("VAULT LOCKED", retryText, 2000);
+                    break;
+                default:
+                    _showFeedback("KEY DERIVATION FAILED", "", 1500);
+                    break;
+                }
                 needRedraw = true;
                 fullRefreshPending = true;
             }
@@ -136,4 +138,37 @@ void PinScreen::_render(const uint8_t digits[PIN_LEN], uint8_t cursor) {
 
     // "PIN: ••••" indicator at the bottom
     _display.drawText(fb, 4, dispH - 20, "PIN: ****", false, 1);
+}
+
+void PinScreen::_showFeedback(const char* line1, const char* line2, uint16_t delayMs) {
+    uint8_t* fb    = _display.getFrameBuffer();
+    uint16_t dispW = _display.width();
+    uint16_t dispH = _display.height();
+
+    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    _display.drawText(fb, 4, (dispH / 2) - 18, line1, false, 2);
+    if (line2 && line2[0] != '\0') {
+        _display.drawText(fb, 4, (dispH / 2) + 14, line2, false, 2);
+    }
+    _display.fastRefresh();
+
+    if (delayMs > 0) {
+        delay(delayMs);
+    }
+}
+
+void PinScreen::_formatRetryAfter(uint32_t retryAfterSeconds, char* out, size_t len) const {
+    if (!out || len == 0) return;
+
+    if (retryAfterSeconds >= 3600) {
+        snprintf(out, len, "TRY AGAIN IN %luh %lum",
+                 (unsigned long)(retryAfterSeconds / 3600),
+                 (unsigned long)((retryAfterSeconds % 3600) / 60));
+    } else if (retryAfterSeconds >= 60) {
+        snprintf(out, len, "TRY AGAIN IN %lum %lus",
+                 (unsigned long)(retryAfterSeconds / 60),
+                 (unsigned long)(retryAfterSeconds % 60));
+    } else {
+        snprintf(out, len, "TRY AGAIN IN %lus", (unsigned long)retryAfterSeconds);
+    }
 }

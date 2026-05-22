@@ -33,8 +33,12 @@ using std::int64_t;
 using std::size_t;
 
 // ── Timing stubs ──────────────────────────────────────────────────────────────
-inline uint32_t millis() { return 0; }
-inline void     delay(uint32_t) {}
+inline uint32_t _arduinoMockMillis = 0;
+
+inline uint32_t millis() { return _arduinoMockMillis; }
+inline void     delay(uint32_t ms) { _arduinoMockMillis += ms; }
+inline void     setMillis(uint32_t ms) { _arduinoMockMillis = ms; }
+inline void     advanceMillis(uint32_t ms) { _arduinoMockMillis += ms; }
 
 // ── NTP / SNTP stub ───────────────────────────────────────────────────────────
 inline void configTime(long /*gmtOffset*/, int /*daylightOffset*/,
