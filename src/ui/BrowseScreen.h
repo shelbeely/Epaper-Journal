@@ -23,6 +23,7 @@ enum class BrowseResult {
     NEW_ENTRY,     // user chose "[ + NEW ENTRY ]"
     CALENDAR,      // user chose "[ STREAK ]"
     SEARCH,        // user chose "[ SEARCH ]"
+    THEME,         // user chose "[ THEME ]"
     VAULT_TOGGLE,  // user chose "[ LOCK VAULT ]" or "[ UNLOCK VAULT ]"
     WIFI_TOGGLE,   // user chose "[ WIFI: ON ]" or "[ WIFI: OFF ]"
     BACK,          // user pressed Back / no action
@@ -51,7 +52,7 @@ private:
     // Header area: title row + prompt row + padding (fixed layout).
     static constexpr uint8_t  HEADER_H    = 44;
     // Number of fixed items before the entry list
-    static constexpr uint8_t  FIXED_ITEMS = 5;  // NEW_ENTRY + STREAK + SEARCH + VAULT + WIFI
+    static constexpr uint8_t  FIXED_ITEMS = 6;  // NEW_ENTRY + STREAK + SEARCH + THEME + VAULT + WIFI
 
     uint16_t _itemH;  ///< Line height of the active font at SCALE (runtime)
 
