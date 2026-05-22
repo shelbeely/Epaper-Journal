@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- New entry title prompt screen with selectable date, daily-prompt, and untitled defaults before creating a journal entry.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
