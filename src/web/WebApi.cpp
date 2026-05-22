@@ -5,7 +5,11 @@
 #include "WebApi.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <array>
+#include <memory>
+#include <vector>
 #include "../config.h"
+#include "../journal/JournalExport.h"
 #include "../journal/JournalManager.h"
 #include "../journal/JournalFrontmatter.h"
 #include "ui_bundle.h"
@@ -22,6 +26,237 @@ String LogRingBuffer::toJson() const {
     serializeJson(doc, out);
     return out;
 }
+
+namespace {
+
+struct ZipExportFile {
+    String path;
+    String zipPath;
+    uint32_t crc32 = 0;
+    uint32_t size = 0;
+    uint32_t localOffset = 0;
+    uint32_t centralOffset = 0;
+    std::vector<uint8_t> localHeader;
+    std::vector<uint8_t> centralHeader;
+};
+
+static void appendLe16(std::vector<uint8_t>& out, uint16_t value) {
+    out.push_back((uint8_t)(value & 0xFFu));
+    out.push_back((uint8_t)((value >> 8u) & 0xFFu));
+}
+
+static void appendLe32(std::vector<uint8_t>& out, uint32_t value) {
+    out.push_back((uint8_t)(value & 0xFFu));
+    out.push_back((uint8_t)((value >> 8u) & 0xFFu));
+    out.push_back((uint8_t)((value >> 16u) & 0xFFu));
+    out.push_back((uint8_t)((value >> 24u) & 0xFFu));
+}
+
+static std::vector<uint8_t> buildLocalHeader(const ZipExportFile& file) {
+    std::vector<uint8_t> out;
+    out.reserve(30 + file.zipPath.length());
+    appendLe32(out, 0x04034B50u);                    // local file header sig
+    appendLe16(out, 20);                             // version needed
+    appendLe16(out, 0);                              // flags
+    appendLe16(out, 0);                              // method: stored
+    appendLe16(out, 0);                              // mod time
+    appendLe16(out, 0);                              // mod date
+    appendLe32(out, file.crc32);
+    appendLe32(out, file.size);
+    appendLe32(out, file.size);
+    appendLe16(out, (uint16_t)file.zipPath.length());
+    appendLe16(out, 0);                              // extra length
+    for (size_t i = 0; i < file.zipPath.length(); ++i) {
+        out.push_back((uint8_t)file.zipPath[i]);
+    }
+    return out;
+}
+
+static std::vector<uint8_t> buildCentralHeader(const ZipExportFile& file) {
+    std::vector<uint8_t> out;
+    out.reserve(46 + file.zipPath.length());
+    appendLe32(out, 0x02014B50u);                    // central dir sig
+    appendLe16(out, 20);                             // version made by
+    appendLe16(out, 20);                             // version needed
+    appendLe16(out, 0);                              // flags
+    appendLe16(out, 0);                              // method: stored
+    appendLe16(out, 0);                              // mod time
+    appendLe16(out, 0);                              // mod date
+    appendLe32(out, file.crc32);
+    appendLe32(out, file.size);
+    appendLe32(out, file.size);
+    appendLe16(out, (uint16_t)file.zipPath.length());
+    appendLe16(out, 0);                              // extra length
+    appendLe16(out, 0);                              // comment length
+    appendLe16(out, 0);                              // disk number
+    appendLe16(out, 0);                              // internal attrs
+    appendLe32(out, 0);                              // external attrs
+    appendLe32(out, file.localOffset);
+    for (size_t i = 0; i < file.zipPath.length(); ++i) {
+        out.push_back((uint8_t)file.zipPath[i]);
+    }
+    return out;
+}
+
+static std::array<uint8_t, 22> buildEndRecord(uint16_t count,
+                                              uint32_t centralSize,
+                                              uint32_t centralOffset) {
+    std::array<uint8_t, 22> out {};
+    out[0] = 0x50; out[1] = 0x4B; out[2] = 0x05; out[3] = 0x06;
+    out[8] = (uint8_t)(count & 0xFFu);
+    out[9] = (uint8_t)((count >> 8u) & 0xFFu);
+    out[10] = out[8];
+    out[11] = out[9];
+    out[12] = (uint8_t)(centralSize & 0xFFu);
+    out[13] = (uint8_t)((centralSize >> 8u) & 0xFFu);
+    out[14] = (uint8_t)((centralSize >> 16u) & 0xFFu);
+    out[15] = (uint8_t)((centralSize >> 24u) & 0xFFu);
+    out[16] = (uint8_t)(centralOffset & 0xFFu);
+    out[17] = (uint8_t)((centralOffset >> 8u) & 0xFFu);
+    out[18] = (uint8_t)((centralOffset >> 16u) & 0xFFu);
+    out[19] = (uint8_t)((centralOffset >> 24u) & 0xFFu);
+    return out;
+}
+
+static size_t copyBytes(uint8_t* dst,
+                        size_t maxLen,
+                        const uint8_t* src,
+                        size_t srcLen,
+                        size_t srcOffset) {
+    if (srcOffset >= srcLen || maxLen == 0) return 0;
+    size_t remaining = srcLen - srcOffset;
+    size_t toCopy = (remaining < maxLen) ? remaining : maxLen;
+    memcpy(dst, src + srcOffset, toCopy);
+    return toCopy;
+}
+
+class JournalZipStreamer {
+public:
+    JournalZipStreamer(JournalManager& jm, VaultManager& vault, bool exportEncrypted)
+        : _jm(jm), _vault(vault), _exportEncrypted(exportEncrypted) {
+        _prepare();
+    }
+
+    size_t totalSize() const { return _totalSize; }
+
+    size_t fill(uint8_t* data, size_t maxLen, size_t offset) {
+        size_t written = 0;
+        while (written < maxLen && offset + written < _totalSize) {
+            size_t pos = offset + written;
+
+            if (pos < _centralOffset) {
+                const ZipExportFile* file = _findLocalFile(pos);
+                if (!file) break;
+
+                size_t dataStart = file->localOffset + file->localHeader.size();
+                if (pos < dataStart) {
+                    written += copyBytes(data + written, maxLen - written,
+                                         file->localHeader.data(),
+                                         file->localHeader.size(),
+                                         pos - file->localOffset);
+                    continue;
+                }
+
+                String content = _loadContent(*file);
+                written += copyBytes(data + written, maxLen - written,
+                                     (const uint8_t*)content.c_str(),
+                                     content.length(),
+                                     pos - dataStart);
+                continue;
+            }
+
+            if (pos < _endOffset) {
+                const ZipExportFile* file = _findCentralFile(pos);
+                if (!file) break;
+                written += copyBytes(data + written, maxLen - written,
+                                     file->centralHeader.data(),
+                                     file->centralHeader.size(),
+                                     pos - file->centralOffset);
+                continue;
+            }
+
+            written += copyBytes(data + written, maxLen - written,
+                                 _endRecord.data(), _endRecord.size(),
+                                 pos - _endOffset);
+        }
+
+        return written;
+    }
+
+private:
+    JournalManager& _jm;
+    VaultManager& _vault;
+    bool _exportEncrypted;
+    std::vector<ZipExportFile> _files;
+    std::array<uint8_t, 22> _endRecord {};
+    uint32_t _centralOffset = 0;
+    uint32_t _endOffset = 0;
+    uint32_t _totalSize = 0;
+
+    String _loadContent(const ZipExportFile& file) {
+        String raw = _jm.readEntryRaw(file.path);
+        return JournalExport::selectExportContent(raw, &_vault, _exportEncrypted);
+    }
+
+    void _prepare() {
+        uint32_t nextLocalOffset = 0;
+        auto paths = _jm.listAllPaths();
+        _files.reserve(paths.size());
+
+        for (const auto& path : paths) {
+            String raw = _jm.readEntryRaw(path);
+            if (raw.isEmpty()) continue;
+
+            String content =
+                JournalExport::selectExportContent(raw, &_vault, _exportEncrypted);
+
+            ZipExportFile file;
+            file.path = path;
+            file.zipPath = JournalExport::zipPathFromEntryPath(path);
+            file.size = content.length();
+            file.crc32 = JournalExport::crc32(
+                (const uint8_t*)content.c_str(), content.length());
+            file.localOffset = nextLocalOffset;
+            file.localHeader = buildLocalHeader(file);
+            nextLocalOffset += file.localHeader.size() + file.size;
+
+            _files.push_back(file);
+        }
+
+        _centralOffset = nextLocalOffset;
+        uint32_t nextCentralOffset = _centralOffset;
+        for (auto& file : _files) {
+            file.centralOffset = nextCentralOffset;
+            file.centralHeader = buildCentralHeader(file);
+            nextCentralOffset += file.centralHeader.size();
+        }
+
+        _endOffset = nextCentralOffset;
+        uint32_t centralSize = _endOffset - _centralOffset;
+        _endRecord = buildEndRecord((uint16_t)_files.size(),
+                                    centralSize,
+                                    _centralOffset);
+        _totalSize = _endOffset + _endRecord.size();
+    }
+
+    const ZipExportFile* _findLocalFile(size_t pos) const {
+        for (const auto& file : _files) {
+            size_t fileEnd = file.localOffset + file.localHeader.size() + file.size;
+            if (pos >= file.localOffset && pos < fileEnd) return &file;
+        }
+        return nullptr;
+    }
+
+    const ZipExportFile* _findCentralFile(size_t pos) const {
+        for (const auto& file : _files) {
+            size_t fileEnd = file.centralOffset + file.centralHeader.size();
+            if (pos >= file.centralOffset && pos < fileEnd) return &file;
+        }
+        return nullptr;
+    }
+};
+
+} // namespace
 
 // ── WebApi ────────────────────────────────────────────────────────────────────
 
@@ -261,6 +496,26 @@ void WebApi::_registerJournalRoutes() {
             req->send(201, "application/json", out);
         }
     );
+
+    // GET /api/journal/export[?encrypted=1]
+    _server.on("/api/journal/export", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        bool exportEncrypted =
+            req->hasParam("encrypted") &&
+            req->getParam("encrypted")->value() == "1";
+
+        auto streamer =
+            std::make_shared<JournalZipStreamer>(_jm, _vault, exportEncrypted);
+        AsyncWebServerResponse* resp = req->beginResponse(
+            "application/zip",
+            streamer->totalSize(),
+            [streamer](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+                return streamer->fill(buffer, maxLen, index);
+            });
+        resp->addHeader("Content-Disposition",
+                        "attachment; filename=\"" +
+                        JournalExport::backupFilename(time(nullptr)) + "\"");
+        req->send(resp);
+    });
 }
 
 // ── Vault routes ──────────────────────────────────────────────────────────────

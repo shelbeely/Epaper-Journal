@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- ZIP backup downloads from `/api/journal/export`, including a raw encrypted export mode for vault entries.
+- A web UI "Export All" action for downloading full journal backups without removing the SD card.
+
+### Documentation
+- Documented the journal backup and restore workflow in `docs/building.md`.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
