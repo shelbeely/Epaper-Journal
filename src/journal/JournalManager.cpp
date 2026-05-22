@@ -5,6 +5,24 @@
 #include "JournalManager.h"
 #include "JournalFrontmatter.h"
 #include <algorithm>
+#include <ctype.h>
+
+namespace {
+
+String toLowerCopy(const String& input) {
+    String out;
+    for (unsigned int i = 0; i < input.length(); i++) {
+        out += (char)tolower((unsigned char)input[i]);
+    }
+    return out;
+}
+
+bool containsCaseInsensitive(const String& haystack, const String& needleLower) {
+    if (needleLower.isEmpty()) return false;
+    return toLowerCopy(haystack).indexOf(needleLower) >= 0;
+}
+
+} // namespace
 
 JournalManager::JournalManager(X4Storage& storage, X4Clock& clock,
                                 VaultManager* vault)
@@ -135,6 +153,40 @@ std::vector<String> JournalManager::listAllPaths() {
     }
     std::sort(result.begin(), result.end());
     return result;
+}
+
+std::vector<String> JournalManager::searchEntries(const String& query) {
+    std::vector<String> matches;
+
+    String needle = query;
+    needle.trim();
+    if (needle.isEmpty()) return matches;
+    String needleLower = toLowerCopy(needle);
+
+    auto paths = listAllPaths();
+    matches.reserve(paths.size());
+
+    for (const auto& path : paths) {
+        String searchText = path + "\n" + labelFromFilename(path);
+
+        JournalEntry entry;
+        if (loadEntry(path, entry) && !entry.locked) {
+            searchText += "\n";
+            searchText += entry.title;
+            searchText += "\n";
+            if (entry.body.length() > 500) {
+                searchText += entry.body.substring(0, 500);
+            } else {
+                searchText += entry.body;
+            }
+        }
+
+        if (containsCaseInsensitive(searchText, needleLower)) {
+            matches.push_back(path);
+        }
+    }
+
+    return matches;
 }
 
 bool JournalManager::deleteEntry(const String& path) {

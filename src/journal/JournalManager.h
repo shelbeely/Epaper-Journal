@@ -43,6 +43,10 @@ public:
     // Returns paths sorted oldest-first (ascending). Searches 2020 → current year.
     std::vector<String> listAllPaths();
 
+    // Search entry titles + first 500 chars of body for `query`, case-insensitive.
+    // Locked/encrypted entries are matched by filename/date only.
+    std::vector<String> searchEntries(const String& query);
+
     // Delete an entry by its full path. Returns false on failure.
     bool deleteEntry(const String& path);
 

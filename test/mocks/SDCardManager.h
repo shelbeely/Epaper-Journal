@@ -8,6 +8,7 @@
 
 #include "Arduino.h"
 #include "SdFat.h"
+#include <map>
 #include <vector>
 #include <string>
 
@@ -22,20 +23,33 @@ public:
     static bool _stubEnsureDir;       // return value for ensureDirectoryExists()
     static bool _stubWrite;           // return value for writeFile()
     static String _stubReadContent;   // return value for readFile()
+    static std::map<std::string, std::vector<String>> _stubFilesByDir;
+    static std::map<std::string, String> _stubFileContents;
 
     bool begin()        { return false; }
     bool ready() const  { return _stubReady; }
 
-    std::vector<String> listFiles(const char* /*path*/ = "/",
+    std::vector<String> listFiles(const char* path = "/",
                                   int /*maxFiles*/     = 200) {
-        return {};
+        auto it = _stubFilesByDir.find(path ? path : "/");
+        return (it == _stubFilesByDir.end()) ? std::vector<String>{} : it->second;
     }
-    String readFile(const char* /*path*/) { return _stubReadContent; }
+    String readFile(const char* path) {
+        auto it = _stubFileContents.find(path ? path : "");
+        return (it == _stubFileContents.end()) ? _stubReadContent : it->second;
+    }
     bool   readFileToStream(const char* /*path*/, Print& /*out*/,
                             size_t /*chunkSize*/ = 256) { return false; }
-    size_t readFileToBuffer(const char* /*path*/, char* /*buf*/,
-                            size_t /*bufSize*/, size_t /*maxBytes*/ = 0) {
-        return 0;
+    size_t readFileToBuffer(const char* path, char* buf,
+                            size_t bufSize, size_t maxBytes = 0) {
+        if (!buf || bufSize == 0) return 0;
+        String content = readFile(path);
+        size_t n = content.length();
+        if (maxBytes > 0 && n > maxBytes) n = maxBytes;
+        if (n > bufSize - 1) n = bufSize - 1;
+        if (n > 0) memcpy(buf, content.c_str(), n);
+        buf[n] = '\0';
+        return n;
     }
     bool writeFile(const char* /*path*/, const String& /*content*/) {
         return _stubWrite;
@@ -81,6 +95,8 @@ inline bool   SDCardManager::_stubReady        = false;
 inline bool   SDCardManager::_stubEnsureDir    = false;
 inline bool   SDCardManager::_stubWrite        = false;
 inline String SDCardManager::_stubReadContent;
+inline std::map<std::string, std::vector<String>> SDCardManager::_stubFilesByDir;
+inline std::map<std::string, String> SDCardManager::_stubFileContents;
 
 // Match the macro from the real SDCardManager.h
 #define SdMan SDCardManager::getInstance()

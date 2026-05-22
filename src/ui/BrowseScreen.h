@@ -22,6 +22,7 @@ enum class BrowseResult {
     OPEN_ENTRY,    // user selected an existing entry
     NEW_ENTRY,     // user chose "[ + NEW ENTRY ]"
     CALENDAR,      // user chose "[ STREAK ]"
+    SEARCH,        // user chose "[ SEARCH ]"
     VAULT_TOGGLE,  // user chose "[ LOCK VAULT ]" or "[ UNLOCK VAULT ]"
     BACK,          // user pressed Back / no action
 };
@@ -34,7 +35,7 @@ public:
 
     // Run the browse UI (blocking). Returns the result code.
     // On OPEN_ENTRY, `outPath` is filled with the selected entry path.
-    // On NEW_ENTRY / CALENDAR / VAULT_TOGGLE / BACK, `outPath` is empty.
+    // On NEW_ENTRY / CALENDAR / SEARCH / VAULT_TOGGLE / BACK, `outPath` is empty.
     BrowseResult run(String& outPath);
 
 private:
@@ -50,7 +51,7 @@ private:
     static constexpr uint8_t  HEADER_H    = 44;
     static constexpr uint8_t  ITEM_H      = FONT5X7_LINE_H * SCALE; // 18px per item
     // Number of fixed items before the entry list
-    static constexpr uint8_t  FIXED_ITEMS = 3;  // NEW_ENTRY + STREAK + VAULT
+    static constexpr uint8_t  FIXED_ITEMS = 4;  // NEW_ENTRY + STREAK + SEARCH + VAULT
 
     void _render(const std::vector<String>& labels,
                  int selected, int topRow);
