@@ -68,12 +68,8 @@ void ThemeScreen::run() {
 
         if (needRedraw) {
             _render(data, noteTop, ratingWeekOffset);
-            if (fullRefreshPending) {
-                _display.fullRefresh();
-                fullRefreshPending = false;
-            } else {
-                _display.fastRefresh();
-            }
+            _display.displayGrayscale();
+            fullRefreshPending = false;
             needRedraw = false;
         }
 
@@ -165,27 +161,29 @@ ThemeScreen::ThemeScreenData ThemeScreen::_loadData() {
 }
 
 void ThemeScreen::_render(const ThemeScreenData& data, int noteTop, int ratingWeekOffset) {
-    uint8_t* fb    = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
     (void)dispH;
 
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    _display.clearFrameGrayscale();
 
-    // Zone 1 — Theme banner
-    _display.fillRect(fb, 0, Z1_Y0, dispW, Z1_Y1 - Z1_Y0, true);
-    _display.drawText(fb, 8, 8, "THEME", true, TITLE_SCALE);
-    _display.drawTextWrapped(fb, 92, 10, dispW - 98, data.theme.c_str(), true, TITLE_SCALE);
-    _display.fillRect(fb, 0, Z1_Y1, dispW, 1, true);
+    // Zone 1 — Theme banner (dark gray background, white text)
+    _display.fillRectGray(0, Z1_Y0, dispW, Z1_Y1 - Z1_Y0, GrayLevel::DARK_GRAY);
+    _display.drawTextGray(8, 8, "THEME", GrayLevel::WHITE, GrayLevel::DARK_GRAY, TITLE_SCALE);
+    _display.drawTextWrappedGray(92, 10, dispW - 98, data.theme.c_str(),
+                                 GrayLevel::WHITE, GrayLevel::DARK_GRAY, TITLE_SCALE);
+    _display.fillRectGray(0, Z1_Y1, dispW, 1, GrayLevel::DARK_GRAY);
 
-    // Zone 2 — Season header
-    _display.drawText(fb, 8, 76, "SEASON", false, TITLE_SCALE);
-    _display.drawTextWrapped(fb, 116, 78, dispW - 122, data.season.c_str(), false, TITLE_SCALE);
-    _display.fillRect(fb, 0, Z2_Y1, dispW, 1, true);
+    // Zone 2 — Season header (light gray background)
+    _display.fillRectGray(0, Z2_Y0, dispW, Z2_Y1 - Z2_Y0, GrayLevel::LIGHT_GRAY);
+    _display.drawTextGray(8, 76, "SEASON", GrayLevel::BLACK, GrayLevel::LIGHT_GRAY, TITLE_SCALE);
+    _display.drawTextWrappedGray(116, 78, dispW - 122, data.season.c_str(),
+                                 GrayLevel::BLACK, GrayLevel::LIGHT_GRAY, TITLE_SCALE);
+    _display.fillRectGray(0, Z2_Y1, dispW, 1, GrayLevel::DARK_GRAY);
 
     // Zone 3 — Rating history strip
-    _display.drawText(fb, 4, 115, "DAILY RATINGS", false, BODY_SCALE);
-    _display.fillRect(fb, 0, 128, dispW, 1, true);
+    _display.drawTextGray(4, 115, "DAILY RATINGS", GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
+    _display.fillRectGray(0, 128, dispW, 1, GrayLevel::DARK_GRAY);
 
     int totalRatings = (int)data.ratings.size();
     int end = totalRatings - (ratingWeekOffset * RATING_WINDOW_DAYS);
@@ -204,24 +202,29 @@ void ThemeScreen::_render(const ThemeScreenData& data, int noteTop, int ratingWe
         uint16_t x = 4 + (uint16_t)(i * colW);
         bool isToday = (rs.dateKey == todayKey);
         if (isToday) {
-            _display.fillRect(fb, x, 132, colW - 1, 74, true);
+            _display.fillRectGray(x, 132, colW - 1, 74, GrayLevel::BLACK);
         }
 
         String dow = _formatDayLabel(rs.dateKey);
-        _display.drawText(fb, x + (colW / 2) - 3, 136, dow.c_str(), isToday, BODY_SCALE);
+        _display.drawTextGray(x + (colW / 2) - 3, 136, dow.c_str(),
+                              isToday ? GrayLevel::WHITE : GrayLevel::BLACK,
+                              isToday ? GrayLevel::BLACK : GrayLevel::WHITE,
+                              BODY_SCALE);
 
         const uint8_t box = 8;
         const uint8_t gap = 2;
         uint16_t stripW = (uint16_t)(5 * box + 4 * gap);
         uint16_t bx = x + (colW - stripW) / 2;
+        GrayLevel outlineColor = isToday ? GrayLevel::WHITE : GrayLevel::LIGHT_GRAY;
+        GrayLevel fillColor    = isToday ? GrayLevel::WHITE : GrayLevel::DARK_GRAY;
         for (uint8_t k = 1; k <= 5; k++) {
             uint16_t by = 154;
-            _display.fillRect(fb, bx, by, box, 1, !isToday);
-            _display.fillRect(fb, bx, by + box - 1, box, 1, !isToday);
-            _display.fillRect(fb, bx, by, 1, box, !isToday);
-            _display.fillRect(fb, bx + box - 1, by, 1, box, !isToday);
+            _display.fillRectGray(bx,          by,          box, 1, outlineColor);
+            _display.fillRectGray(bx,          by + box - 1, box, 1, outlineColor);
+            _display.fillRectGray(bx,          by,          1, box, outlineColor);
+            _display.fillRectGray(bx + box - 1, by,          1, box, outlineColor);
             if (k <= rs.rating) {
-                _display.fillRect(fb, bx + 2, by + 2, box - 4, box - 4, !isToday);
+                _display.fillRectGray(bx + 2, by + 2, box - 4, box - 4, fillColor);
             }
             bx += (uint16_t)(box + gap);
         }
@@ -230,12 +233,15 @@ void ThemeScreen::_render(const ThemeScreenData& data, int noteTop, int ratingWe
         uint8_t d = (uint8_t)(rs.dateKey % 100);
         snprintf(dayBuf, sizeof(dayBuf), "%u", d);
         uint16_t dayW = (uint16_t)(strlen(dayBuf) * _display.charAdvance(BODY_SCALE));
-        _display.drawText(fb, x + (colW - dayW) / 2, 196, dayBuf, isToday, BODY_SCALE);
+        _display.drawTextGray(x + (colW - dayW) / 2, 196, dayBuf,
+                              isToday ? GrayLevel::WHITE : GrayLevel::BLACK,
+                              isToday ? GrayLevel::BLACK : GrayLevel::WHITE,
+                              BODY_SCALE);
     }
 
     // Zone 4 — Theme notes feed
-    _display.drawText(fb, 4, 215, "THEME NOTES", false, BODY_SCALE);
-    _display.fillRect(fb, 0, 228, dispW, 1, true);
+    _display.drawTextGray(4, 215, "THEME NOTES", GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
+    _display.fillRectGray(0, 228, dispW, 1, GrayLevel::DARK_GRAY);
 
     const uint16_t feedY = 231;
     const uint16_t feedH = Z4_Y1 - feedY;
@@ -251,39 +257,41 @@ void ThemeScreen::_render(const ThemeScreenData& data, int noteTop, int ratingWe
         const ThemeNote& n = data.notes[idx];
         uint16_t y = feedY + (uint16_t)(r * rowH);
 
-        _display.drawChar(fb, 4, y + 2, '~', false, TITLE_SCALE);
+        _display.drawCharGray(4, y + 2, '~', GrayLevel::BLACK, GrayLevel::WHITE, TITLE_SCALE);
 
         String tag = _formatDateTag(n.dateKey);
         uint16_t tagW = (uint16_t)(tag.length() * _display.charAdvance(BODY_SCALE) + 6);
         uint16_t tagX = dispW - tagW - 4;
-        _display.fillRect(fb, tagX, y + 2, tagW, _display.lineHeight(BODY_SCALE), true);
-        _display.drawText(fb, tagX + 3, y + 2, tag.c_str(), true, BODY_SCALE);
+        _display.fillRectGray(tagX, y + 2, tagW, _display.lineHeight(BODY_SCALE), GrayLevel::DARK_GRAY);
+        _display.drawTextGray(tagX + 3, y + 2, tag.c_str(),
+                              GrayLevel::WHITE, GrayLevel::DARK_GRAY, BODY_SCALE);
 
         uint16_t textX = 22;
         uint16_t maxW = (tagX > textX + 6) ? (uint16_t)(tagX - textX - 6) : 40;
         uint16_t maxChars = (uint16_t)(maxW / _display.charAdvance(BODY_SCALE));
         auto lines = _wrapWords(n.text, maxChars, 2);
         for (size_t li = 0; li < lines.size(); li++) {
-            _display.drawText(fb, textX, y + 2 + li * _display.lineHeight(BODY_SCALE),
-                              lines[li].c_str(), false, BODY_SCALE);
+            _display.drawTextGray(textX, y + 2 + li * _display.lineHeight(BODY_SCALE),
+                                  lines[li].c_str(), GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
         }
 
-        _display.fillRect(fb, 0, y + rowH - 1, dispW, 1, true);
+        _display.fillRectGray(0, y + rowH - 1, dispW, 1, GrayLevel::DARK_GRAY);
     }
 
     // Zone 5 — Footer/nav
-    _display.fillRect(fb, 0, Z5_Y0, dispW, 1, true);
+    _display.fillRectGray(0, Z5_Y0, dispW, 1, GrayLevel::DARK_GRAY);
     uint16_t colW3 = dispW / 3;
-    const char* left = "[ WEEK <- ]";
-    const char* mid  = "[ REFRESH ]";
-    const char* right= "[ -> WEEK ]";
-    uint16_t leftW = (uint16_t)(strlen(left) * _display.charAdvance(BODY_SCALE));
-    uint16_t midW  = (uint16_t)(strlen(mid)  * _display.charAdvance(BODY_SCALE));
-    uint16_t rightW= (uint16_t)(strlen(right)* _display.charAdvance(BODY_SCALE));
-    _display.drawText(fb, (colW3 - leftW) / 2, Z5_Y0 + 8, left, false, BODY_SCALE);
-    _display.drawText(fb, colW3 + (colW3 - midW) / 2, Z5_Y0 + 8, mid, false, BODY_SCALE);
-    _display.drawText(fb, colW3 * 2 + (colW3 - rightW) / 2, Z5_Y0 + 8, right, false, BODY_SCALE);
-    _display.drawText(fb, 4, Z5_Y0 + 24, "UP/DN: notes   BACK: exit", false, BODY_SCALE);
+    const char* left  = "[ WEEK <- ]";
+    const char* mid   = "[ REFRESH ]";
+    const char* right = "[ -> WEEK ]";
+    uint16_t leftW  = (uint16_t)(strlen(left)  * _display.charAdvance(BODY_SCALE));
+    uint16_t midW   = (uint16_t)(strlen(mid)   * _display.charAdvance(BODY_SCALE));
+    uint16_t rightW = (uint16_t)(strlen(right) * _display.charAdvance(BODY_SCALE));
+    _display.drawTextGray((colW3 - leftW) / 2,              Z5_Y0 + 8,  left,  GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
+    _display.drawTextGray(colW3 + (colW3 - midW) / 2,       Z5_Y0 + 8,  mid,   GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
+    _display.drawTextGray(colW3 * 2 + (colW3 - rightW) / 2, Z5_Y0 + 8,  right, GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
+    _display.drawTextGray(4, Z5_Y0 + 24, "UP/DN: notes   BACK: exit",
+                          GrayLevel::BLACK, GrayLevel::WHITE, BODY_SCALE);
 }
 
 String ThemeScreen::_seasonName(uint8_t month) {
