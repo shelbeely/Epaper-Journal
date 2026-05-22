@@ -201,6 +201,7 @@ After flashing a dev build and connecting to Wi-Fi:
 | `/api/journal/entry` | POST | Save entry — body: `{"path":"...","content":"..."}` |
 | `/api/journal/entry` | DELETE | Delete entry at `?path=<path>` |
 | `/api/journal/new` | POST | Create entry, return `{"path":"..."}` — body (optional): `{"title":"..."}` |
+| `/api/journal/export` | GET | Download a ZIP backup of every entry; `?encrypted=1` preserves vault ciphertext |
 
 #### `POST /api/journal/new`
 
@@ -320,6 +321,32 @@ curl -X POST http://192.168.4.1/api/vault/lock
 ### Locked entries in browse list
 
 When the vault is locked, encrypted entries show `[LOCKED]` as their title in the browse list and cannot be opened or edited. They are safe to browse without revealing any content.
+
+## Phase 5 — Backup export
+
+Use the web UI **Export All** button, or download a backup directly:
+
+```bash
+# Default backup: decrypt vault entries first when the vault is unlocked.
+curl -OJ http://192.168.4.1/api/journal/export
+
+# Raw encrypted backup: keeps vault files exactly as stored on disk.
+curl -OJ "http://192.168.4.1/api/journal/export?encrypted=1"
+```
+
+The ZIP contains the `journal/...` directory tree from the SD card so the
+backup preserves year/month folders and filenames.
+
+### Restore workflow
+
+1. Unzip the backup on your computer.
+2. Copy the extracted `journal/` directory back to the root of the SD card to
+   restore the full journal exactly as backed up.
+3. If you used the default export while the vault was unlocked, the restored
+   files are plain Markdown. To keep vault entries encrypted at rest, restore
+   from the `?encrypted=1` backup instead.
+4. As an alternative to copying the SD card directly, you can re-upload
+   individual Markdown files with `POST /api/journal/entry`.
 
  (`data/index.html`) is gzip-compressed and embedded in
 flash as a C byte array in `src/web/ui_bundle.h`.  The header is auto-generated

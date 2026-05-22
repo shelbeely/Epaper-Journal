@@ -38,6 +38,11 @@ public:
     // Read the raw file content of an entry (for HTTP export).
     String readEntryRaw(const String& path);
 
+    // Read an entry for backup/export. Encrypted entries are returned decrypted
+    // when possible unless `rawEncrypted` is true, in which case the on-disk
+    // ciphertext is preserved.
+    bool readEntryForExport(const String& path, String& out, bool rawEncrypted = false);
+
     // List entry paths for the given year/month, sorted alphabetically
     // (chronological because filenames are timestamp-based).
     std::vector<String> listEntries(uint16_t year, uint8_t month);

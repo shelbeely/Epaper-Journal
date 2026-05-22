@@ -132,6 +132,25 @@ String JournalManager::readEntryRaw(const String& path) {
     return _storage.readEntry(path.c_str());
 }
 
+bool JournalManager::readEntryForExport(const String& path, String& out, bool rawEncrypted) {
+    out = _storage.readEntry(path.c_str());
+    if (out.isEmpty()) return false;
+
+    if (!_vault || !VaultManager::isEncryptedContent(out)) {
+        return true;
+    }
+
+    if (rawEncrypted || !_vault->isUnlocked()) {
+        return true;
+    }
+
+    String decrypted = _vault->decrypt(out);
+    if (!decrypted.isEmpty()) {
+        out = decrypted;
+    }
+    return true;
+}
+
 std::vector<String> JournalManager::listEntries(uint16_t year, uint8_t month) {
     // Get filenames from storage (just the names, not full paths)
     std::vector<String> names = _storage.listEntries(year, month);

@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 ### Added
+- ZIP-based journal backup export at `/api/journal/export`, including a raw encrypted mode for vault entries.
+- Web UI **Export All** download button plus backup/restore workflow documentation.
 - Added `tools/serve_ota_manifest.py` to host OTA `manifest.json` + `firmware.bin` locally with computed SHA-256, and documented manifest setup/placeholder behavior.
 - Journal entry keyword search from the device browse menu and `/api/journal/search`.
 - New entry title prompt screen with selectable date, daily-prompt, and untitled defaults before creating a journal entry.

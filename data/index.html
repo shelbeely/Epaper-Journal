@@ -107,9 +107,9 @@ main{flex:1;overflow:hidden;display:flex}
   <div id="export-panel">
     <button class="exp-btn back" id="export-back-btn">&#8592; Back</button>
     <div class="export-section">
-      <h2>&#128196; Obsidian Export</h2>
-      <p>Download all journal entries as individual Markdown files inside a .tar archive, ready to copy into your Obsidian vault.</p>
-      <button class="exp-btn green" id="obsidian-btn">Download .tar</button>
+      <h2>&#128190; Full Backup Export</h2>
+      <p>Download every journal entry as a ZIP backup. If the vault is unlocked, encrypted entries are exported decrypted; otherwise they stay encrypted.</p>
+      <button class="exp-btn green" id="export-all-btn">Export All</button>
     </div>
     <div class="export-section">
       <h2>&#129303; GitHub Gist Backup</h2>
@@ -314,26 +314,11 @@ function buildTar(files){
   return out;
 }
 
-document.getElementById('obsidian-btn').onclick=function(){
-  showMsg('Fetching entries…',false);
-  fetch('/api/export/all')
-    .then(function(r){return r.ok?r.json():Promise.reject('HTTP '+r.status);})
-    .then(function(entries){
-      var files=entries.filter(function(e){return !e.locked;}).map(function(e){
-        var frontmatter='---\ntitle: '+e.title+'\ndate: '+e.date+(e.tags?'\ntags: '+e.tags:'')+'\n---\n';
-        return {name:e.filename||('entry.md'),content:frontmatter+(e.body||'')};
-      });
-      if(!files.length){showMsg('No unlocked entries to export.',true);return;}
-      var tar=buildTar(files);
-      var blob=new Blob([tar],{type:'application/x-tar'});
-      var a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download='journal-obsidian.tar';
-      a.click();
-      URL.revokeObjectURL(a.href);
-      showMsg('Downloaded '+files.length+' entries.',false);
-    })
-    .catch(function(e){showMsg('Export failed: '+e,true);});
+document.getElementById('export-all-btn').onclick=function(){
+  var a=document.createElement('a');
+  a.href='/api/journal/export';
+  a.click();
+  showMsg('Backup download started.',false);
 };
 
 // Save / load token from localStorage
