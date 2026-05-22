@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Added a persisted Wi-Fi toggle (`WIFI_AUTO_ON`, NVS `system/wifi_on`) with a Browse menu item to turn Wi-Fi ON/OFF.
+
+### Changed
+- Wi-Fi now restores from persisted state on boot instead of always starting.
+- Browse idle/power deep-sleep path now powers down Wi-Fi before entering sleep.
+- Web API now returns `503 {"error":"wifi_disabled"}` when Wi-Fi is disabled.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

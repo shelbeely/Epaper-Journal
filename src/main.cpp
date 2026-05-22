@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <BatteryMonitor.h>
+#include <Preferences.h>
 #include <esp_sleep.h>
 
 #include "config.h"
@@ -47,6 +48,9 @@ static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
 static PinScreen      gPinScreen(gDisplay, gInput);
 
 static bool gSafeModeActive = false;
+static bool gWifiEnabled = WIFI_AUTO_ON != 0;
+static constexpr const char* WIFI_STATE_NAMESPACE = "system";
+static constexpr const char* WIFI_STATE_KEY = "wifi_on";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -70,6 +74,42 @@ static void connectWifi() {
     }
 }
 
+static bool loadWifiEnabledState() {
+    Preferences prefs;
+    if (!prefs.begin(WIFI_STATE_NAMESPACE, true)) {
+        return WIFI_AUTO_ON != 0;
+    }
+    bool enabled = prefs.getBool(WIFI_STATE_KEY, WIFI_AUTO_ON != 0);
+    prefs.end();
+    return enabled;
+}
+
+static void saveWifiEnabledState(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin(WIFI_STATE_NAMESPACE, false)) {
+        return;
+    }
+    prefs.putBool(WIFI_STATE_KEY, enabled);
+    prefs.end();
+}
+
+static void disableWifiRadio() {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+
+static void setWifiEnabled(bool enabled, bool persist = true) {
+    if (enabled) {
+        connectWifi();
+    } else {
+        disableWifiRadio();
+    }
+    gWifiEnabled = enabled;
+    if (persist) {
+        saveWifiEnabledState(enabled);
+    }
+}
+
 // Run all health checks required before marking OTA valid.
 // Returns true if every check passes.
 static bool runHealthChecks() {
@@ -90,8 +130,8 @@ static bool runHealthChecks() {
         X4_LOGF(X4M_HEALTH_FAILED, "check=battery");
         ok = false;
     }
-    // 4. Wi-Fi connected (STA or AP)
-    if (WiFi.status() != WL_CONNECTED && WiFi.softAPgetStationNum() == 0) {
+    // 4. Wi-Fi connected (STA or AP) when Wi-Fi is enabled
+    if (gWifiEnabled && WiFi.status() != WL_CONNECTED && WiFi.softAPgetStationNum() == 0) {
         X4_LOGF(X4M_HEALTH_FAILED, "check=wifi");
         ok = false;
     }
@@ -150,7 +190,8 @@ void setup() {
     }
 
     // ── Wi-Fi ─────────────────────────────────────────────────────────────
-    connectWifi();
+    gWifiEnabled = loadWifiEnabledState();
+    setWifiEnabled(gWifiEnabled, false);
 
     // ── Clock sync (best-effort; falls back to NVS) ───────────────────────
     if (!gSafeModeActive) {
@@ -209,6 +250,8 @@ void loop() {
         } else {
             gPinScreen.run(gVault);
         }
+    } else if (result == BrowseResult::WIFI_TOGGLE) {
+        setWifiEnabled(!gWifiEnabled);
     } else if (result == BrowseResult::OPEN_ENTRY && !selectedPath.isEmpty()) {
         JournalEntry e;
         if (gJournalMgr.loadEntry(selectedPath, e)) {

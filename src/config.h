@@ -31,6 +31,9 @@
 #ifndef WIFI_PASSWORD
   #define WIFI_PASSWORD "your-password"
 #endif
+#ifndef WIFI_AUTO_ON
+  #define WIFI_AUTO_ON 1
+#endif
 
 // Soft-AP SSID for Web Editor mode
 #define SOFTAP_SSID     "eJournal"

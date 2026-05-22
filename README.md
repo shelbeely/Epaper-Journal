@@ -129,6 +129,7 @@ The most commonly changed tunables live in `src/config.h`. Override any `#ifndef
 |---|---|---|
 | `WIFI_SSID` | `"your-ssid"` | Station-mode SSID. Use a `src/secrets.h` (gitignored) or inject via build flags. |
 | `WIFI_PASSWORD` | `"your-password"` | Station-mode password. Same approach as SSID. |
+| `WIFI_AUTO_ON` | `1` | Default Wi-Fi state when no persisted preference exists (`1`=enabled, `0`=disabled). |
 | `SOFTAP_SSID` | `"eJournal"` | Soft-AP network name for the web editor. |
 | `IDLE_SLEEP_TIMEOUT_MS` | `300000` (5 min) | Milliseconds of inactivity before the sleep screen and deep sleep. |
 | `BATTERY_ADC_PIN` | `0` (disabled) | ADC GPIO for the battery voltage divider. Set to `0` to disable monitoring. |
