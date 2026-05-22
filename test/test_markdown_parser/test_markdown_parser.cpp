@@ -839,6 +839,120 @@ void test_parse_grid_multiple_rows(void) {
     TEST_ASSERT_EQUAL(MD_GRID_ROW,    lines[2].type);
 }
 
+// ── XJL Theme System ──────────────────────────────────────────────────────────
+
+void test_parse_theme_basic(void) {
+    auto lines = MarkdownParser::parse("::theme Year of Health", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_THEME, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("Year of Health", lines[0].text.c_str());
+}
+
+void test_parse_theme_text_inline_stripped(void) {
+    auto lines = MarkdownParser::parse("::theme **Year** of Health", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_THEME, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("Year of Health", lines[0].text.c_str());
+}
+
+void test_parse_theme_empty_text(void) {
+    // "::theme " with nothing after — produces one line with empty text
+    auto lines = MarkdownParser::parse("::theme ", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_THEME, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("", lines[0].text.c_str());
+}
+
+void test_parse_theme_no_space_is_normal(void) {
+    // "::themeX" — no space after keyword, not a theme line
+    auto lines = MarkdownParser::parse("::themeX", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
+void test_parse_season_basic(void) {
+    auto lines = MarkdownParser::parse("::season Spring 2026", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_SEASON, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("Spring 2026", lines[0].text.c_str());
+}
+
+void test_parse_season_text_inline_stripped(void) {
+    auto lines = MarkdownParser::parse("::season **Spring** 2026", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_SEASON, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("Spring 2026", lines[0].text.c_str());
+}
+
+void test_parse_season_no_space_is_normal(void) {
+    auto lines = MarkdownParser::parse("::seasonX", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
+void test_parse_rating_middle_value(void) {
+    auto lines = MarkdownParser::parse("::rating 3", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_RATING, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("3", lines[0].text.c_str());
+}
+
+void test_parse_rating_min_value(void) {
+    auto lines = MarkdownParser::parse("::rating 1", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_RATING, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("1", lines[0].text.c_str());
+}
+
+void test_parse_rating_max_value(void) {
+    auto lines = MarkdownParser::parse("::rating 5", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_RATING, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("5", lines[0].text.c_str());
+}
+
+void test_parse_rating_zero_clamped_to_one(void) {
+    auto lines = MarkdownParser::parse("::rating 0", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_RATING, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("1", lines[0].text.c_str());
+}
+
+void test_parse_rating_above_five_clamped(void) {
+    auto lines = MarkdownParser::parse("::rating 9", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_RATING, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("5", lines[0].text.c_str());
+}
+
+void test_parse_theme_note_basic(void) {
+    auto lines = MarkdownParser::parse("~ stayed focused today", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_THEME_NOTE, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("stayed focused today", lines[0].text.c_str());
+}
+
+void test_parse_theme_note_inline_stripped(void) {
+    auto lines = MarkdownParser::parse("~ **great** day", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_THEME_NOTE, lines[0].type);
+    TEST_ASSERT_EQUAL_STRING("great day", lines[0].text.c_str());
+}
+
+void test_parse_theme_note_no_space_is_normal(void) {
+    // "~text" — no space after tilde, not a theme note
+    auto lines = MarkdownParser::parse("~text", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
+void test_parse_theme_note_double_tilde_not_matched(void) {
+    // "~~text~~" is an inline strikethrough inside a normal paragraph, not a theme note
+    auto lines = MarkdownParser::parse("~~strikethrough~~", 40);
+    TEST_ASSERT_EQUAL(1, (int)lines.size());
+    TEST_ASSERT_EQUAL(MD_NORMAL, lines[0].type);
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -977,6 +1091,24 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_parse_grid_exits_on_blank_line);
     RUN_TEST(test_parse_grid_non_pipe_line_exits_grid);
     RUN_TEST(test_parse_grid_multiple_rows);
+
+    // ── Theme System extensions ──
+    RUN_TEST(test_parse_theme_basic);
+    RUN_TEST(test_parse_theme_text_inline_stripped);
+    RUN_TEST(test_parse_theme_empty_text);
+    RUN_TEST(test_parse_theme_no_space_is_normal);
+    RUN_TEST(test_parse_season_basic);
+    RUN_TEST(test_parse_season_text_inline_stripped);
+    RUN_TEST(test_parse_season_no_space_is_normal);
+    RUN_TEST(test_parse_rating_middle_value);
+    RUN_TEST(test_parse_rating_min_value);
+    RUN_TEST(test_parse_rating_max_value);
+    RUN_TEST(test_parse_rating_zero_clamped_to_one);
+    RUN_TEST(test_parse_rating_above_five_clamped);
+    RUN_TEST(test_parse_theme_note_basic);
+    RUN_TEST(test_parse_theme_note_inline_stripped);
+    RUN_TEST(test_parse_theme_note_no_space_is_normal);
+    RUN_TEST(test_parse_theme_note_double_tilde_not_matched);
 
     return UNITY_END();
 }

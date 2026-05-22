@@ -575,6 +575,46 @@ std::vector<MdLine> MarkdownParser::parse(const String& body,
             continue;
         }
 
+        // ── XJL Theme System: ::theme <text> ─────────────────────────────────
+        if (raw.startsWith("::theme ")) {
+            String text = stripInline(raw.substring(8));
+            text.trim();
+            _wrapAppend(out, MD_THEME, text, maxH, maxH);
+            continue;
+        }
+
+        // ── XJL Theme System: ::season <text> ────────────────────────────────
+        if (raw.startsWith("::season ")) {
+            String text = stripInline(raw.substring(9));
+            text.trim();
+            _wrapAppend(out, MD_SEASON, text, maxH, maxH);
+            continue;
+        }
+
+        // ── XJL Theme System: ::rating N ─────────────────────────────────────
+        if (raw.startsWith("::rating ")) {
+            String numStr = raw.substring(9);
+            numStr.trim();
+            int n = atoi(numStr.c_str());
+            if (n < 1) n = 1;
+            if (n > 5) n = 5;
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%d", n);
+            MdLine ml;
+            ml.type = MD_RATING;
+            ml.text = String(buf);
+            out.push_back(ml);
+            continue;
+        }
+
+        // ── XJL Theme System: ~ text (theme note) ────────────────────────────
+        if (raw.length() >= 2 && raw[0] == '~' && raw[1] == ' ') {
+            String text = stripInline(raw.substring(2));
+            _wrapAppend(out, MD_THEME_NOTE, text, maxCharsSignify, maxCharsSignify,
+                        lineBold, lineCodeSpan);
+            continue;
+        }
+
         // ── Normal paragraph ──────────────────────────────────────────────────
         String text = stripInline(raw);
         _wrapAppend(out, MD_NORMAL, text, maxCharsNormal, maxCharsNormal,

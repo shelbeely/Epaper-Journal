@@ -426,6 +426,73 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
     default:
         _drawLineText(fb, margin, y, line.text.c_str(), false, SCALE, line);
         break;
+
+    // ── XJL Theme System ──────────────────────────────────────────────────────
+
+    case MD_THEME: {
+        // Inverted full-width bar (like H1) with a "THEME" badge on the left
+        _display.fillRect(fb, 0, y, dispW, _itemH, true);
+        const char* badge = "THEME";
+        uint16_t    bW    = (uint16_t)(strlen(badge) * charAdv + 4);
+        // Badge drawn in white-on-black (inverted=true against the already-black bar
+        // means white text; the badge fill is darker — use a white border instead)
+        _display.drawText(fb, margin + 2, y, badge, /*inverted=*/true, SCALE);
+        uint16_t textStart = margin + bW + 4;
+        if (!line.text.isEmpty()) {
+            _drawLineText(fb, textStart, y, line.text.c_str(), /*inverted=*/true, SCALE, line);
+        }
+        break;
+    }
+
+    case MD_SEASON: {
+        // Inverted full-width bar with a "SEASON" badge on the left
+        _display.fillRect(fb, 0, y, dispW, _itemH, true);
+        const char* badge = "SEASON";
+        uint16_t    bW    = (uint16_t)(strlen(badge) * charAdv + 4);
+        _display.drawText(fb, margin + 2, y, badge, /*inverted=*/true, SCALE);
+        uint16_t textStart = margin + bW + 4;
+        if (!line.text.isEmpty()) {
+            _drawLineText(fb, textStart, y, line.text.c_str(), /*inverted=*/true, SCALE, line);
+        }
+        break;
+    }
+
+    case MD_RATING: {
+        // "N/5" label followed by five filled/empty boxes
+        int n = atoi(line.text.c_str());
+        if (n < 1) n = 1;
+        if (n > 5) n = 5;
+
+        // Label: "N/5"
+        char label[5];
+        snprintf(label, sizeof(label), "%d/5", n);
+        uint16_t labelW  = (uint16_t)(strlen(label) * charAdv);
+        _display.drawText(fb, margin, y, label, false, SCALE);
+
+        // Five boxes drawn to the right of the label
+        uint16_t bx = margin + labelW + charAdv; // one-char gap after label
+        for (int k = 1; k <= 5; k++) {
+            uint16_t cellCy = y + BOX_OFF;
+            bool filled = (k <= n);
+            // Border
+            _display.fillRect(fb, bx,              cellCy,              BOX_SZ, 1,      true);
+            _display.fillRect(fb, bx,              cellCy + BOX_SZ - 1, BOX_SZ, 1,      true);
+            _display.fillRect(fb, bx,              cellCy,              1,      BOX_SZ, true);
+            _display.fillRect(fb, bx + BOX_SZ - 1, cellCy,              1,      BOX_SZ, true);
+            if (filled) {
+                _display.fillRect(fb, bx + 2, cellCy + 2, BOX_SZ - 4, BOX_SZ - 4, true);
+            }
+            bx += (uint16_t)(BOX_SZ + 2); // 2 px gap between boxes
+        }
+        break;
+    }
+
+    case MD_THEME_NOTE: {
+        // Tilde glyph in the marker zone, text to the right
+        _display.drawChar(fb, margin + 2, glyphY, '~', false, SCALE);
+        _drawLineText(fb, textX_bj, y, line.text.c_str(), false, SCALE, line);
+        break;
+    }
     }
 }
 

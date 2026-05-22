@@ -176,6 +176,62 @@ Water        | .   | x   | x   | x   | .
 - In a data cell, `x` or `X` or `1` renders as a **filled box** (■); `.` or `0` or an empty cell renders as an **empty box** (□); any other value is shown as truncated text.
 - A blank line or a line without `|` ends the grid block.
 
+#### XJL Theme System extensions
+
+The Theme System (from the [Cortex podcast](https://www.relay.fm/cortex)) is a yearly-theme productivity framework built around a broad guiding word or phrase rather than a rigid numerical goal. These XJL extensions let you embed Theme System concepts directly in your journal entries.
+
+**Yearly theme declaration**
+
+```markdown
+::theme Year of Health
+```
+
+Renders as a full-width inverted bar (white text on black) with a `THEME` badge, identical in visual weight to an H1 heading.
+
+**Seasonal review header**
+
+```markdown
+::season Spring 2026
+```
+
+Renders as a full-width inverted bar with a `SEASON` badge. Use it to mark the start of a quarterly (seasonal) review section.
+
+**Daily alignment rating**
+
+```markdown
+::rating 3
+```
+
+Renders an `N/5` label followed by five boxes — filled (■) for each point up to N, empty (□) for the rest. Valid values are 1–5; values outside this range are clamped automatically.
+
+**Theme-aligned observation**
+
+```markdown
+~ stayed focused on the theme today
+~ skipped gym — not very Year of Health
+```
+
+Uses the `~` signifier (tilde + space at the start of a line). Renders with a `~` glyph in the marker zone and the observation text to the right — the same layout as `!` (priority) and `@` (event) signifiers.
+
+**Example daily entry using Theme System extensions**
+
+```markdown
+---
+title: Wednesday check-in
+date: 2026-05-20 21:00:00
+---
+::theme Year of Health
+::rating 4
+
+## Today
+~ hit the gym for 45 minutes
+~ ate well, plenty of water
+! schedule blood test
+
+## Reflections
+How have I grown since ::season Spring 2026 began?
+```
+
 ### Minimal valid entry
 
 ```markdown
