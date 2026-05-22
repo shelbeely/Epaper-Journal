@@ -593,6 +593,18 @@ void X4Display::fillRectGray(uint16_t x, uint16_t y, uint16_t w, uint16_t h, Gra
     }
 }
 
+void X4Display::drawBitmapGray(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                               const uint8_t* bits, uint16_t rowStride,
+                               GrayLevel fg, GrayLevel bg) {
+    if (!bits || !_grayPlane || w == 0 || h == 0) return;
+    for (uint16_t row = 0; row < h; row++) {
+        for (uint16_t col = 0; col < w; col++) {
+            bool set = (bits[(uint32_t)row * rowStride + (col >> 3u)] >> (7u - (col & 7u))) & 1u;
+            _setGrayPixel(x + col, y + row, set ? fg : bg);
+        }
+    }
+}
+
 void X4Display::drawCharGray(uint16_t x, uint16_t y, char c,
                               GrayLevel fg, GrayLevel bg, uint8_t scale) {
     if (scale == 0) return;

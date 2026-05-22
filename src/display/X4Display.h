@@ -190,7 +190,13 @@ public:
                                  const char* str,
                                  GrayLevel fg, GrayLevel bg, uint8_t scale = 1);
 
-    // ── Diagnostics ──────────────────────────────────────────────────────────
+    /// Render a 1-bit source bitmap to the grayscale framebuffer.
+    /// bits: packed pixel data, MSB first (bit 7 of byte 0 = leftmost pixel),
+    /// rowStride bytes per row (padded to the caller's row boundary).
+    /// Bit value 1 → fg, bit value 0 → bg.
+    void drawBitmapGray(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                        const uint8_t* bits, uint16_t rowStride,
+                        GrayLevel fg, GrayLevel bg);
     const X4DisplayStatus& status() const { return _status; }
 
 private:

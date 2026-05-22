@@ -4,6 +4,7 @@
 
 #include "WebApi.h"
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <array>
 #include <memory>
@@ -457,6 +458,7 @@ void WebApi::begin() {
     _registerVaultRoutes();
     _registerWifiProvisioningRoutes();
     _registerExportRoutes();
+    _registerSleepRoutes();
 #if CONFIG_X4_DIAG_HTTP_API
     _registerDevRoutes();
 #endif
@@ -1281,4 +1283,64 @@ void WebApi::_registerExportRoutes() {
         serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
+}
+
+// ── /api/sleep/* ──────────────────────────────────────────────────────────────
+
+void WebApi::_registerSleepRoutes() {
+    static constexpr const char* SLEEP_NS       = "sleep";
+    static constexpr const char* SLEEP_MODE_KEY = "mode";
+    static constexpr const char* SLEEP_PATH_KEY = "img_path";
+    static constexpr const char* SLEEP_DIR_KEY  = "img_dir";
+
+    // GET /api/sleep/config — return current sleep mode configuration
+    _server.on("/api/sleep/config", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (rejectWhenWifiDisabled(req)) return;
+        Preferences prefs;
+        prefs.begin(SLEEP_NS, true);
+        uint8_t mode = prefs.getUChar(SLEEP_MODE_KEY, 0);
+        String path  = prefs.getString(SLEEP_PATH_KEY, "");
+        String dir   = prefs.getString(SLEEP_DIR_KEY,  "/sleep");
+        prefs.end();
+
+        JsonDocument doc;
+        doc["mode"]     = mode;
+        doc["img_path"] = path;
+        doc["img_dir"]  = dir;
+
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // POST /api/sleep/config — update sleep mode configuration
+    // Body: { "mode": 0-3, "img_path": "/sleep/cover.bmp", "img_dir": "/sleep" }
+    _server.on("/api/sleep/config", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        nullptr,
+        [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            if (rejectWhenWifiDisabled(req)) return;
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+                req->send(400, "application/json", "{\"error\":\"bad_json\"}");
+                return;
+            }
+
+            Preferences prefs;
+            prefs.begin(SLEEP_NS, false);
+            if (doc["mode"].is<int>()) {
+                uint8_t m = (uint8_t)doc["mode"].as<int>();
+                if (m > 3) m = 0;
+                prefs.putUChar(SLEEP_MODE_KEY, m);
+            }
+            if (doc["img_path"].is<const char*>()) {
+                prefs.putString(SLEEP_PATH_KEY, doc["img_path"].as<const char*>());
+            }
+            if (doc["img_dir"].is<const char*>()) {
+                prefs.putString(SLEEP_DIR_KEY, doc["img_dir"].as<const char*>());
+            }
+            prefs.end();
+
+            req->send(200, "application/json", "{\"ok\":true}");
+        });
 }

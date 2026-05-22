@@ -13,6 +13,12 @@ ThemeScreen::ThemeScreen(JournalManager& jm, X4Display& display, X4Input& input,
     : _jm(jm), _display(display), _input(input), _clock(clock)
 {}
 
+void ThemeScreen::renderOnce(int noteTop, int ratingWeekOffset) {
+    _display.setOrientation(DisplayOrientation::PORTRAIT_CW);
+    ThemeScreenData data = _loadData();
+    _render(data, noteTop, ratingWeekOffset);
+}
+
 void ThemeScreen::run() {
     DisplayOrientation oldOrientation = _display.getOrientation();
     _display.setOrientation(DisplayOrientation::PORTRAIT_CW);

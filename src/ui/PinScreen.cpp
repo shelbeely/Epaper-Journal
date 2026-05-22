@@ -80,12 +80,8 @@ bool PinScreen::run(VaultManager& vault) {
 
         if (needRedraw) {
             _render(digits, cursor);
-            if (fullRefreshPending) {
-                _display.fullRefresh();
-                fullRefreshPending = false;
-            } else {
-                _display.fastRefresh();
-            }
+            _display.displayGrayscale();
+            fullRefreshPending = false;
             needRedraw = false;
         }
 
@@ -94,19 +90,18 @@ bool PinScreen::run(VaultManager& vault) {
 }
 
 void PinScreen::_render(const uint8_t digits[PIN_LEN], uint8_t cursor) {
-    uint8_t* fb    = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
 
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
+    _display.clearFrameGrayscale();
 
-    // Title
-    _display.drawText(fb, 4, 8, "ENTER PIN", false, 3);
-    _display.drawText(fb, 4, 44, "UP/DN:change  LR:move  CONFIRM:submit  BACK:cancel",
-                      false, 1);
-
-    // Separator
-    _display.fillRect(fb, 0, 58, dispW, 1, true);
+    // Header band
+    _display.fillRectGray(0, 0, dispW, 60, GrayLevel::DARK_GRAY);
+    _display.drawTextGray(4, 8, "ENTER PIN",
+                          GrayLevel::WHITE, GrayLevel::DARK_GRAY, 3);
+    _display.drawTextGray(4, 44, "UP/DN:change  LR:move  CONFIRM:submit  BACK:cancel",
+                          GrayLevel::WHITE, GrayLevel::DARK_GRAY, 1);
+    _display.fillRectGray(0, 60, dispW, 2, GrayLevel::DARK_GRAY);
 
     // Digit boxes — centered horizontally
     uint16_t totalW = PIN_LEN * BOX_W + (PIN_LEN - 1) * BOX_GAP;
@@ -118,39 +113,44 @@ void PinScreen::_render(const uint8_t digits[PIN_LEN], uint8_t cursor) {
         bool sel = (i == cursor);
 
         if (sel) {
-            _display.fillRect(fb, x, boxY, BOX_W, BOX_H, true);
+            _display.fillRectGray(x, boxY, BOX_W, BOX_H, GrayLevel::DARK_GRAY);
         } else {
-            // Draw border
-            _display.fillRect(fb, x, boxY, BOX_W, 2, true);
-            _display.fillRect(fb, x, boxY + BOX_H - 2, BOX_W, 2, true);
-            _display.fillRect(fb, x, boxY, 2, BOX_H, true);
-            _display.fillRect(fb, x + BOX_W - 2, boxY, 2, BOX_H, true);
+            // LIGHT_GRAY 2 px border
+            _display.fillRectGray(x,             boxY,              BOX_W, 2, GrayLevel::LIGHT_GRAY);
+            _display.fillRectGray(x,             boxY + BOX_H - 2,  BOX_W, 2, GrayLevel::LIGHT_GRAY);
+            _display.fillRectGray(x,             boxY,              2, BOX_H, GrayLevel::LIGHT_GRAY);
+            _display.fillRectGray(x + BOX_W - 2, boxY,              2, BOX_H, GrayLevel::LIGHT_GRAY);
         }
 
-        // Draw digit
+        // Digit character
         char d[2] = {'0' + digits[i], '\0'};
         uint16_t charW = _display.charAdvance(SCALE);
         uint16_t charH = _display.lineHeight(SCALE);
         uint16_t charX = x + (BOX_W - charW) / 2;
         uint16_t charY = boxY + (BOX_H - charH) / 2;
-        _display.drawText(fb, charX, charY, d, sel, SCALE);
+        GrayLevel fg = sel ? GrayLevel::WHITE : GrayLevel::BLACK;
+        GrayLevel bg = sel ? GrayLevel::DARK_GRAY : GrayLevel::WHITE;
+        _display.drawTextGray(charX, charY, d, fg, bg, SCALE);
     }
 
     // "PIN: ••••" indicator at the bottom
-    _display.drawText(fb, 4, dispH - 20, "PIN: ****", false, 1);
+    _display.drawTextGray(4, dispH - 20, "PIN: ****",
+                          GrayLevel::BLACK, GrayLevel::WHITE, 1);
 }
 
 void PinScreen::_showFeedback(const char* line1, const char* line2, uint16_t delayMs) {
-    uint8_t* fb    = _display.getFrameBuffer();
     uint16_t dispW = _display.width();
     uint16_t dispH = _display.height();
 
-    memset(fb, 0xFF, (size_t)(dispW / 8) * dispH);
-    _display.drawText(fb, 4, (dispH / 2) - 18, line1, false, 2);
+    _display.clearFrameGrayscale();
+    _display.drawTextGray(4, (dispH / 2) - 18, line1,
+                          GrayLevel::BLACK, GrayLevel::WHITE, 2);
     if (line2 && line2[0] != '\0') {
-        _display.drawText(fb, 4, (dispH / 2) + 14, line2, false, 2);
+        _display.drawTextGray(4, (dispH / 2) + 14, line2,
+                              GrayLevel::BLACK, GrayLevel::WHITE, 2);
     }
-    _display.fastRefresh();
+    (void)dispW;
+    _display.displayGrayscale();
 
     if (delayMs > 0) {
         delay(delayMs);
