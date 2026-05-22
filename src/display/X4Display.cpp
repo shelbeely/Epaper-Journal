@@ -3,9 +3,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "X4Display.h"
-#include "Font5x7.h"
+#include "BitmapFont.h"
 #include <Arduino.h>
 #include <string.h>
+
+// Font data arrays are compiled only in FontData.cpp; access them here via the
+// extern declarations from BitmapFont.h.
 
 X4Display::X4Display()
     : _eink(EPD_SCLK, EPD_MOSI, EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
@@ -20,12 +23,15 @@ bool X4Display::init() {
     _initialized = true;
     _status.initialized = true;
 
+    // Default font: FONT_5X7
+    _activeFont = &FONT_5X7;
+
     X4_DLOG(X4M_DISPLAY_FRAMEBUFFER_ALLOC);
     X4_LOG(X4M_DISPLAY_INIT_OK);
     return true;
 }
 
-// ── Refresh helpers ──────────────────────────────────────────────────────────
+// ── Refresh helpers ───────────────────────────────────────────────────────────
 
 void X4Display::fullRefresh() {
     X4_DLOG(X4M_DISPLAY_FULL_REFRESH_START);
@@ -46,9 +52,6 @@ void X4Display::halfRefresh() {
 
 void X4Display::fastRefresh() {
     uint32_t t0 = millis();
-
-    // Auto-upgrade to a full refresh after GHOSTING_FULL_REFRESH_INTERVAL
-    // consecutive fast refreshes to clear accumulated ghosting artifacts.
 #if GHOSTING_FULL_REFRESH_INTERVAL > 0
     if (++_fastRefreshCount >= GHOSTING_FULL_REFRESH_INTERVAL) {
         _fastRefreshCount = 0;
@@ -74,11 +77,11 @@ void X4Display::partialRefresh(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 }
 
 void X4Display::clear() {
-    _eink.clearScreen(0xFF); // 0xFF = all white
+    _eink.clearScreen(0xFF);
     fullRefresh();
 }
 
-// ── Power management ─────────────────────────────────────────────────────────
+// ── Power management ──────────────────────────────────────────────────────────
 
 void X4Display::sleep() {
     _eink.deepSleep();
@@ -86,27 +89,56 @@ void X4Display::sleep() {
 }
 
 void X4Display::wake() {
-    // deepSleep() requires a hardware reset to wake; re-init the controller.
     _fastRefreshCount = 0;
     _eink.begin();
     X4_DLOG(X4M_DISPLAY_WAKE_OK);
 }
 
-// ── Framebuffer access ───────────────────────────────────────────────────────
+// ── Framebuffer access ────────────────────────────────────────────────────────
 
 uint8_t* X4Display::getFrameBuffer() {
     return _eink.getFrameBuffer();
 }
 
 uint16_t X4Display::width() const {
-    return _eink.getDisplayWidth();
+    if (_orientation != DisplayOrientation::LANDSCAPE) {
+        return _physH();  // portrait logical width = physical height = 480
+    }
+    return _physW();      // landscape: 800
 }
 
 uint16_t X4Display::height() const {
-    return _eink.getDisplayHeight();
+    if (_orientation != DisplayOrientation::LANDSCAPE) {
+        return _physW();  // portrait logical height = physical width = 800
+    }
+    return _physH();      // landscape: 480
 }
 
-// ── Test patterns ────────────────────────────────────────────────────────────
+// ── Orientation ───────────────────────────────────────────────────────────────
+
+void X4Display::setOrientation(DisplayOrientation o) {
+    _orientation = o;
+}
+
+// ── Font selection ────────────────────────────────────────────────────────────
+
+void X4Display::setFont(const BitmapFont* font) {
+    _activeFont = font ? font : &FONT_5X7;
+}
+
+uint16_t X4Display::charAdvance(uint8_t scale) const {
+    return (uint16_t)(_activeFont->advance * scale);
+}
+
+uint16_t X4Display::lineHeight(uint8_t scale) const {
+    return (uint16_t)(_activeFont->lineH * scale);
+}
+
+uint16_t X4Display::glyphHeight(uint8_t scale) const {
+    return (uint16_t)(_activeFont->glyphH * scale);
+}
+
+// ── Test patterns ─────────────────────────────────────────────────────────────
 
 void X4Display::renderAllWhite() {
     _eink.clearScreen(0xFF);
@@ -119,13 +151,12 @@ void X4Display::renderAllBlack() {
 }
 
 void X4Display::renderCheckerboard() {
-    uint8_t* fb = _eink.getFrameBuffer();
+    uint8_t* fb     = _eink.getFrameBuffer();
     uint16_t wBytes = _eink.getDisplayWidthBytes();
     uint16_t h      = _eink.getDisplayHeight();
 
     for (uint16_t row = 0; row < h; row++) {
         for (uint16_t col = 0; col < wBytes; col++) {
-            // alternate 0xAA / 0x55 per byte, invert on odd rows
             uint8_t pattern = (col % 2 == 0) ? 0xAA : 0x55;
             if (row % 2 != 0) pattern = ~pattern;
             fb[row * wBytes + col] = pattern;
@@ -136,30 +167,25 @@ void X4Display::renderCheckerboard() {
 
 void X4Display::renderBorderWithCornerLabels() {
     _eink.clearScreen(0xFF);
-    uint8_t* fb    = _eink.getFrameBuffer();
+    uint8_t* fb     = _eink.getFrameBuffer();
     uint16_t wBytes = _eink.getDisplayWidthBytes();
     uint16_t w      = _eink.getDisplayWidth();
     uint16_t h      = _eink.getDisplayHeight();
 
-    // Draw top and bottom borders (1px black line)
     for (uint16_t col = 0; col < wBytes; col++) {
-        fb[col] = 0x00;                         // top row
-        fb[(h - 1) * wBytes + col] = 0x00;     // bottom row
+        fb[col] = 0x00;
+        fb[(h - 1) * wBytes + col] = 0x00;
     }
-    // Draw left and right borders
     for (uint16_t row = 0; row < h; row++) {
-        // Left border: set MSB of first byte
         fb[row * wBytes] &= 0x7F;
-        // Right border: set LSB of last byte
         fb[row * wBytes + wBytes - 1] &= 0xFE;
     }
-    // Small marker squares at corners (4×4 pixels, black)
     auto markCorner = [&](uint16_t px, uint16_t py) {
         for (uint16_t dy = 0; dy < 4 && (py + dy) < h; dy++) {
             for (uint16_t dx = 0; dx < 4 && (px + dx) < w; dx++) {
                 uint16_t byteIdx = (py + dy) * wBytes + (px + dx) / 8;
                 uint8_t  bitMask = 0x80 >> ((px + dx) % 8);
-                fb[byteIdx] &= ~bitMask; // set bit to 0 = black
+                fb[byteIdx] &= ~bitMask;
             }
         }
     };
@@ -167,13 +193,12 @@ void X4Display::renderBorderWithCornerLabels() {
     markCorner(w - 6, 2);
     markCorner(2,     h - 6);
     markCorner(w - 6, h - 6);
-
     fullRefresh();
 }
 
 void X4Display::renderDiagonalLine() {
     _eink.clearScreen(0xFF);
-    uint8_t* fb    = _eink.getFrameBuffer();
+    uint8_t* fb     = _eink.getFrameBuffer();
     uint16_t wBytes = _eink.getDisplayWidthBytes();
     uint16_t w      = _eink.getDisplayWidth();
     uint16_t h      = _eink.getDisplayHeight();
@@ -188,20 +213,16 @@ void X4Display::renderDiagonalLine() {
 }
 
 void X4Display::renderFontSample() {
-    // Without a GFX library, render a simple repeated bit pattern that
-    // looks like a row of squares — a placeholder until a font renderer is added.
     _eink.clearScreen(0xFF);
     uint8_t* fb     = _eink.getFrameBuffer();
     uint16_t wBytes = _eink.getDisplayWidthBytes();
     uint16_t h      = _eink.getDisplayHeight();
 
-    // Draw solid 8×8 pixel blocks at fixed positions (simulates text glyphs)
     auto drawBlock = [&](uint16_t bx, uint16_t by) {
         for (uint16_t row = by; row < by + 8 && row < h; row++) {
-            fb[row * wBytes + bx] = 0x00; // 8 black pixels
+            fb[row * wBytes + bx] = 0x00;
         }
     };
-    const char* label = "JOURNAL"; // 7 chars
     for (int i = 0; i < 7; i++) {
         drawBlock(10 + i * 10, 20);
     }
@@ -209,7 +230,6 @@ void X4Display::renderFontSample() {
 }
 
 void X4Display::renderPartialRefreshRect() {
-    // Render a black rectangle in the center using displayWindow()
     _eink.clearScreen(0xFF);
     uint8_t* fb     = _eink.getFrameBuffer();
     uint16_t wBytes = _eink.getDisplayWidthBytes();
@@ -227,17 +247,17 @@ void X4Display::renderPartialRefreshRect() {
 }
 
 bool X4Display::renderTestPattern(const char* name) {
-    if (strcmp(name, "all_white")              == 0) { renderAllWhite();              return true; }
-    if (strcmp(name, "all_black")              == 0) { renderAllBlack();              return true; }
-    if (strcmp(name, "checkerboard")           == 0) { renderCheckerboard();          return true; }
-    if (strcmp(name, "border")                 == 0) { renderBorderWithCornerLabels(); return true; }
-    if (strcmp(name, "diagonal")               == 0) { renderDiagonalLine();          return true; }
-    if (strcmp(name, "font_sample")            == 0) { renderFontSample();            return true; }
-    if (strcmp(name, "partial_refresh_rect")   == 0) { renderPartialRefreshRect();    return true; }
+    if (strcmp(name, "all_white")            == 0) { renderAllWhite();             return true; }
+    if (strcmp(name, "all_black")            == 0) { renderAllBlack();             return true; }
+    if (strcmp(name, "checkerboard")         == 0) { renderCheckerboard();         return true; }
+    if (strcmp(name, "border")               == 0) { renderBorderWithCornerLabels(); return true; }
+    if (strcmp(name, "diagonal")             == 0) { renderDiagonalLine();         return true; }
+    if (strcmp(name, "font_sample")          == 0) { renderFontSample();           return true; }
+    if (strcmp(name, "partial_refresh_rect") == 0) { renderPartialRefreshRect();   return true; }
     return false;
 }
 
-// ── Private helpers ──────────────────────────────────────────────────────────
+// ── Private helpers ───────────────────────────────────────────────────────────
 
 void X4Display::_recordRefresh(const char* type, uint32_t durationMs) {
     _status.lastRefreshType = type;
@@ -249,37 +269,94 @@ void X4Display::_setError(const char* msg) {
     X4_LOG(X4M_DISPLAY_INIT_FAILED);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _setPixel — orientation-aware single-pixel write
+//
+// (lx, ly) are logical coordinates in the current orientation's coordinate
+// space.  The transform maps them to physical (px, py) in the 800 × 480
+// framebuffer before writing the bit.
+//
+//   LANDSCAPE:    px = lx,         py = ly
+//   PORTRAIT_CW:  px = phW-1-ly,   py = lx      (right edge up)
+//   PORTRAIT_CCW: px = ly,         py = phH-1-lx (left edge up)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void X4Display::_setPixel(uint8_t* fb, uint16_t lx, uint16_t ly, bool black) {
+    uint16_t phW = _physW();
+    uint16_t phH = _physH();
+    uint16_t px, py;
+
+    switch (_orientation) {
+    case DisplayOrientation::PORTRAIT_CW:
+        // logical: width=phH(480), height=phW(800)
+        if (lx >= phH || ly >= phW) return;
+        px = phW - 1u - ly;
+        py = lx;
+        break;
+    case DisplayOrientation::PORTRAIT_CCW:
+        // logical: width=phH(480), height=phW(800)
+        if (lx >= phH || ly >= phW) return;
+        px = ly;
+        py = phH - 1u - lx;
+        break;
+    default: // LANDSCAPE
+        if (lx >= phW || ly >= phH) return;
+        px = lx;
+        py = ly;
+        break;
+    }
+
+    uint16_t wBytes  = phW / 8u;
+    uint16_t byteIdx = py * wBytes + px / 8u;
+    uint8_t  bitMask = 0x80u >> (px % 8u);
+    if (black) fb[byteIdx] &= ~bitMask;
+    else       fb[byteIdx] |=  bitMask;
+}
+
 // ── Font rendering ────────────────────────────────────────────────────────────
 
 void X4Display::drawChar(uint8_t* fb, uint16_t x, uint16_t y, char c,
                           bool inverted, uint8_t scale) {
     if (!fb || scale == 0) return;
-    if (c < 0x20 || c > 0x7E) c = ' ';
-    const uint8_t* glyph = FONT5X7[c - 0x20];
+    const BitmapFont* font = _activeFont;
+    if (!font) return;
 
-    uint16_t dispW  = width();
-    uint16_t dispH  = height();
-    uint16_t wBytes = dispW / 8;
+    uint8_t fc = (uint8_t)c;
+    if (fc < font->firstChar || fc >= font->firstChar + font->numChars) fc = (uint8_t)' ';
 
-    // Draw FONT5X7_ADVANCE columns (5 glyph + 1 gap)
-    for (uint8_t col = 0; col < FONT5X7_ADVANCE; col++) {
-        uint8_t colData = (col < FONT5X7_GLYPH_W) ? glyph[col] : 0x00;
-        for (uint8_t row = 0; row < FONT5X7_GLYPH_H; row++) {
-            bool pixOn = (colData >> row) & 0x01; // bit0 = top row
+    int glyphIdx = (int)(fc - font->firstChar);
+    const uint8_t* glyphData;
+    if (font->columnMajor) {
+        glyphData = font->data + glyphIdx * (int)font->glyphW;
+    } else {
+        glyphData = font->data + glyphIdx * (int)font->glyphH * (int)font->bytesPerRow;
+    }
+
+    for (uint8_t col = 0; col < font->advance; col++) {
+        for (uint8_t row = 0; row < font->glyphH; row++) {
+            bool pixOn;
+            if (col < font->glyphW) {
+                if (font->columnMajor) {
+                    // Column-major: byte = column, bit 0 = top row
+                    pixOn = (glyphData[col] >> row) & 0x01u;
+                } else {
+                    // Row-major: MSB of first byte = leftmost pixel
+                    uint8_t byteInRow = col >> 3u;
+                    uint8_t bitMask   = 0x80u >> (col & 7u);
+                    pixOn = (glyphData[(int)row * (int)font->bytesPerRow + (int)byteInRow] & bitMask) != 0;
+                }
+            } else {
+                pixOn = false; // gap column
+            }
             bool drawBlack = inverted ? !pixOn : pixOn;
-            if (!drawBlack && !inverted) continue; // skip white pixels in normal mode
+            if (!drawBlack && !inverted) continue;
+
             for (uint8_t sy = 0; sy < scale; sy++) {
                 for (uint8_t sx = 0; sx < scale; sx++) {
-                    uint16_t px = x + col * scale + sx;
-                    uint16_t py = y + row * scale + sy;
-                    if (px >= dispW || py >= dispH) continue;
-                    uint16_t byteIdx = py * wBytes + px / 8;
-                    uint8_t  bitMask = 0x80 >> (px % 8);
-                    if (drawBlack) {
-                        fb[byteIdx] &= ~bitMask; // black
-                    } else {
-                        fb[byteIdx] |= bitMask;  // white
-                    }
+                    _setPixel(fb,
+                        x + (uint16_t)col * scale + sx,
+                        y + (uint16_t)row * scale + sy,
+                        drawBlack);
                 }
             }
         }
@@ -289,11 +366,13 @@ void X4Display::drawChar(uint8_t* fb, uint16_t x, uint16_t y, char c,
 void X4Display::drawText(uint8_t* fb, uint16_t x, uint16_t y, const char* str,
                           bool inverted, uint8_t scale) {
     if (!fb || !str || scale == 0) return;
-    uint16_t cx = x;
-    uint16_t charAdv = (uint16_t)(FONT5X7_ADVANCE * scale);
+    const BitmapFont* font = _activeFont;
+    if (!font) return;
+    uint16_t cx      = x;
+    uint16_t charAdv = (uint16_t)(font->advance * scale);
     for (size_t i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\n') break; // single-line: stop at newline
-        if (cx + charAdv > width()) break; // clip at right edge
+        if (str[i] == '\n') break;
+        if (cx + charAdv > width()) break;
         drawChar(fb, cx, y, str[i], inverted, scale);
         cx += charAdv;
     }
@@ -303,8 +382,10 @@ uint16_t X4Display::drawTextWrapped(uint8_t* fb, uint16_t x, uint16_t startY,
                                      uint16_t maxW, const char* str,
                                      bool inverted, uint8_t scale) {
     if (!fb || !str || scale == 0 || maxW == 0) return startY;
-    uint16_t charAdv = (uint16_t)(FONT5X7_ADVANCE * scale);
-    uint16_t lineH   = (uint16_t)(FONT5X7_LINE_H   * scale);
+    const BitmapFont* font = _activeFont;
+    if (!font) return startY;
+    uint16_t charAdv = (uint16_t)(font->advance * scale);
+    uint16_t lineH   = (uint16_t)(font->lineH   * scale);
     uint16_t cx = x;
     uint16_t cy = startY;
     const char* p = str;
@@ -316,32 +397,26 @@ uint16_t X4Display::drawTextWrapped(uint8_t* fb, uint16_t x, uint16_t startY,
             p++;
             continue;
         }
-        // Find end of current word
         const char* wordEnd = p;
         while (*wordEnd && *wordEnd != ' ' && *wordEnd != '\n') wordEnd++;
         int wordLen = (int)(wordEnd - p);
         uint16_t wordW = (uint16_t)(wordLen * charAdv);
 
-        // Wrap if word doesn't fit and we're not at the start of the line
         if (cx + wordW > x + maxW && cx > x) {
             cx = x;
             cy += lineH;
         }
-
-        // Draw the word character by character
         for (int i = 0; i < wordLen; i++) {
             if (cx + charAdv > x + maxW) {
-                // Hard-break mid-word
                 cx = x;
                 cy += lineH;
             }
             drawChar(fb, cx, cy, p[i], inverted, scale);
             cx += charAdv;
         }
-
         p = wordEnd;
         if (*p == ' ') {
-            cx += charAdv; // space gap
+            cx += charAdv;
             p++;
         }
     }
@@ -351,41 +426,49 @@ uint16_t X4Display::drawTextWrapped(uint8_t* fb, uint16_t x, uint16_t startY,
 void X4Display::fillRect(uint8_t* fb, uint16_t x, uint16_t y,
                           uint16_t w, uint16_t h, bool black) {
     if (!fb || w == 0 || h == 0) return;
-    uint16_t dispW  = width();
-    uint16_t dispH  = height();
-    uint16_t wBytes = dispW / 8;
 
-    uint16_t xEnd = (x + w < dispW) ? x + w : dispW;
-    uint8_t  fill = black ? 0x00 : 0xFF;
+    if (_orientation == DisplayOrientation::LANDSCAPE) {
+        // ── Fast path: direct byte-aligned writes (landscape only) ────────────
+        uint16_t dispW  = _physW();
+        uint16_t dispH  = _physH();
+        uint16_t wBytes = dispW / 8;
+        uint16_t xEnd   = (x + w < dispW) ? x + w : dispW;
+        uint16_t yEnd   = (y + h < dispH) ? (uint16_t)(y + h) : dispH;
+        uint8_t  fill   = black ? 0x00 : 0xFF;
 
-    for (uint16_t py = y; py < y + h && py < dispH; py++) {
-        uint16_t px = x;
-
-        // ── Leading unaligned pixels (until the next byte boundary) ──────────
-        while (px < xEnd && (px % 8) != 0) {
-            uint16_t byteIdx = py * wBytes + px / 8;
-            uint8_t  bitMask = 0x80 >> (px % 8);
-            if (black) fb[byteIdx] &= ~bitMask;
-            else       fb[byteIdx] |=  bitMask;
-            px++;
+        for (uint16_t py = y; py < yEnd; py++) {
+            uint16_t px = x;
+            // Leading unaligned pixels
+            while (px < xEnd && (px % 8) != 0) {
+                uint16_t byteIdx = py * wBytes + px / 8;
+                uint8_t  bitMask = 0x80 >> (px % 8);
+                if (black) fb[byteIdx] &= ~bitMask;
+                else       fb[byteIdx] |=  bitMask;
+                px++;
+            }
+            // Byte-aligned span
+            uint16_t fullEnd = xEnd & ~(uint16_t)7u;
+            if (fullEnd > px) {
+                uint16_t startByte = px / 8;
+                uint16_t byteCount = (fullEnd - px) / 8;
+                memset(fb + py * wBytes + startByte, fill, byteCount);
+                px = fullEnd;
+            }
+            // Trailing unaligned pixels
+            while (px < xEnd) {
+                uint16_t byteIdx = py * wBytes + px / 8;
+                uint8_t  bitMask = 0x80 >> (px % 8);
+                if (black) fb[byteIdx] &= ~bitMask;
+                else       fb[byteIdx] |=  bitMask;
+                px++;
+            }
         }
-
-        // ── Full-byte aligned span: write 8 pixels per byte ──────────────────
-        uint16_t fullEnd = xEnd & ~0x7u; // round down to byte boundary
-        if (fullEnd > px) {
-            uint16_t startByte = px / 8;
-            uint16_t byteCount = (fullEnd - px) / 8;
-            memset(fb + py * wBytes + startByte, fill, byteCount);
-            px = fullEnd;
-        }
-
-        // ── Trailing unaligned pixels ─────────────────────────────────────────
-        while (px < xEnd) {
-            uint16_t byteIdx = py * wBytes + px / 8;
-            uint8_t  bitMask = 0x80 >> (px % 8);
-            if (black) fb[byteIdx] &= ~bitMask;
-            else       fb[byteIdx] |=  bitMask;
-            px++;
+    } else {
+        // ── Portrait: pixel-by-pixel with orientation transform ───────────────
+        for (uint16_t row = 0; row < h; row++) {
+            for (uint16_t col = 0; col < w; col++) {
+                _setPixel(fb, x + col, y + row, black);
+            }
         }
     }
 }

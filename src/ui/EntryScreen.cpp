@@ -6,18 +6,21 @@
 
 EntryScreen::EntryScreen(X4Display& display, X4Input& input,
                          SleepScreen& sleepScreen)
-    : _display(display), _input(input), _sleepScreen(sleepScreen)
+    : _display(display), _input(input), _sleepScreen(sleepScreen),
+      _titleH((uint16_t)(_display.lineHeight(SCALE) * 2)),
+      _bodyY((uint16_t)(_titleH + 4)),
+      _itemH(_display.lineHeight(SCALE))
 {}
 
 void EntryScreen::show(const JournalEntry& entry) {
     uint16_t dispW = _display.width();
 
     // Characters per line for body text at SCALE
-    uint16_t maxChars = (dispW - 8) / (FONT5X7_ADVANCE * SCALE);
+    uint16_t maxChars = (dispW - 8) / _display.charAdvance(SCALE);
 
     std::vector<MdLine> lines = MarkdownParser::parse(entry.body, maxChars);
     const int totalLines  = (int)lines.size();
-    const int linesPerPage = (_display.height() - BODY_Y - 4) / ITEM_H;
+    const int linesPerPage = (_display.height() - _bodyY - 4) / _itemH;
     int topLine = 0;
     bool needRedraw = true;
     bool fullRefreshPending = true;
@@ -63,36 +66,36 @@ void EntryScreen::show(const JournalEntry& entry) {
 
 void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
                                const MdLine& line, uint16_t y) {
-    const uint16_t charAdv = FONT5X7_ADVANCE * SCALE;
+    const uint16_t charAdv = _display.charAdvance(SCALE);
     const uint16_t margin  = 4;
 
     // ── XJL marker zone constants ─────────────────────────────────────────────
     // All task/signifier types share a 2-char-wide marker zone;
     // text starts at margin + 2*charAdv.
-    const uint16_t textX_bj = margin + charAdv * 2;          // 28 px at scale 2
+    const uint16_t textX_bj = margin + charAdv * 2;
 
-    // Checkbox: 10×10 px, vertically centred in ITEM_H
-    const uint16_t BOX_SZ  = (uint16_t)(SCALE * 5);          // 10 px
-    const uint16_t BOX_OFF = (uint16_t)((ITEM_H - BOX_SZ) / 2); // 4 px
+    // Checkbox: 10×10 px, vertically centred in _itemH
+    const uint16_t BOX_SZ  = (uint16_t)(SCALE * 5);
+    const uint16_t BOX_OFF = (uint16_t)((_itemH - BOX_SZ) / 2);
     const uint16_t boxX    = margin;
     const uint16_t boxY    = y + BOX_OFF;
 
-    // Glyph y for 1-char signifiers (centre 14px glyph in 18px ITEM_H = +2 px)
-    const uint16_t glyphY  = y + (uint16_t)((ITEM_H - FONT5X7_GLYPH_H * SCALE) / 2);
+    // Glyph y for 1-char signifiers (centre glyph in _itemH)
+    const uint16_t glyphY  = y + (uint16_t)((_itemH - _display.glyphHeight(SCALE)) / 2);
 
     switch (line.type) {
 
     case MD_H1: {
         // Inverted: fill the full-width bar black, draw text in white
-        _display.fillRect(fb, 0, y, dispW, ITEM_H, true);
+        _display.fillRect(fb, 0, y, dispW, _itemH, true);
         _display.drawText(fb, margin, y, line.text.c_str(), /*inverted=*/true, SCALE);
         break;
     }
 
     case MD_H2: {
         _display.drawText(fb, margin, y, line.text.c_str(), false, SCALE);
-        // Underline: 1 px below the glyph body (glyph height = FONT5X7_GLYPH_H * SCALE)
-        uint16_t underY = y + (uint16_t)(FONT5X7_GLYPH_H * SCALE) + 1;
+        // Underline: 1 px below the glyph body
+        uint16_t underY = y + _display.glyphHeight(SCALE) + 1;
         _display.fillRect(fb, margin, underY, dispW - margin * 2, 1, true);
         break;
     }
@@ -125,14 +128,14 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
 
     case MD_BLOCKQUOTE: {
         // 2 px left bar
-        _display.fillRect(fb, margin, y, 2, ITEM_H, true);
+        _display.fillRect(fb, margin, y, 2, _itemH, true);
         _display.drawText(fb, margin + charAdv + 4, y, line.text.c_str(), false, SCALE);
         break;
     }
 
     case MD_HLINE: {
         // Centred 2 px horizontal rule
-        uint16_t ruleY = y + ITEM_H / 2 - 1;
+        uint16_t ruleY = y + _itemH / 2 - 1;
         _display.fillRect(fb, margin, ruleY, dispW - margin * 2, 2, true);
         break;
     }
@@ -163,7 +166,7 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
             uint16_t tW      = (uint16_t)(tLen * charAdv);
             uint16_t maxW    = (dispW > textX_bj + 4u) ? dispW - textX_bj - 4u : 0u;
             if (tW > maxW) tW = maxW;
-            uint16_t strikeY = y + (uint16_t)(FONT5X7_GLYPH_H * SCALE / 2);
+            uint16_t strikeY = y + _display.glyphHeight(SCALE) / 2;
             if (tW > 0) _display.fillRect(fb, textX_bj, strikeY, tW, 1, true);
         }
         break;
@@ -207,7 +210,7 @@ void EntryScreen::_renderLine(uint8_t* fb, uint16_t dispW,
 
     case MD_CODE_BLOCK: {
         // 3 px left bar (thicker than blockquote's 2 px) + 1-char indent
-        _display.fillRect(fb, margin, y, 3, ITEM_H, true);
+        _display.fillRect(fb, margin, y, 3, _itemH, true);
         _display.drawText(fb, margin + charAdv + 4, y, line.text.c_str(), false, SCALE);
         break;
     }
@@ -243,14 +246,14 @@ void EntryScreen::_renderPage(const String& title, const std::vector<MdLine>& li
     _display.drawText(fb, 4, 4, title.c_str(), false, SCALE);
 
     // Separator
-    _display.fillRect(fb, 0, TITLE_H, dispW, 1, true);
+    _display.fillRect(fb, 0, _titleH, dispW, 1, true);
 
     // ── Body lines ────────────────────────────────────────────────────────────
-    const int linesPerPage = (dispH - BODY_Y - 4) / ITEM_H;
+    const int linesPerPage = (dispH - _bodyY - 4) / _itemH;
     for (int i = 0; i < linesPerPage; i++) {
         int lineIdx = topLine + i;
         if (lineIdx >= (int)lines.size()) break;
-        uint16_t lineY = (uint16_t)(BODY_Y + i * ITEM_H);
+        uint16_t lineY = (uint16_t)(_bodyY + i * _itemH);
         _renderLine(fb, dispW, lines[lineIdx], lineY);
     }
 
@@ -260,8 +263,8 @@ void EntryScreen::_renderPage(const String& title, const std::vector<MdLine>& li
         int currentPage = topLine / linesPerPage + 1;
         int totalPages  = (totalLines + linesPerPage - 1) / linesPerPage;
         snprintf(pageInfo, sizeof(pageInfo), "%d/%d", currentPage, totalPages);
-        uint16_t piW = (uint16_t)(strlen(pageInfo) * FONT5X7_ADVANCE * SCALE);
-        _display.drawText(fb, dispW - piW - 4, dispH - ITEM_H - 2,
+        uint16_t piW = (uint16_t)(strlen(pageInfo) * _display.charAdvance(SCALE));
+        _display.drawText(fb, dispW - piW - 4, dispH - _itemH - 2,
                           pageInfo, false, SCALE);
     }
 }
