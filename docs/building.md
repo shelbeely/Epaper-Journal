@@ -400,22 +400,43 @@ between months, open and edit entries, create new ones, and test the export
 flow — all in memory for the lifetime of the server process.  Edits are not
 persisted to disk.
 
-### Screenshots for documentation
+### Automated screenshots
 
-With the dev server running, use any browser screenshot tool or a headless
-browser to capture the UI.  For example with Playwright (one-off, no install
-needed):
+`tools/screenshot_ui.py` starts the mock server internally and drives a
+headless Chromium browser via [Playwright](https://playwright.dev/python/)
+to capture three PNG views automatically:
+
+| File | What it shows |
+|---|---|
+| `web-ui-list.png` | Entry list for the current month |
+| `web-ui-editor.png` | First entry open in the Markdown editor |
+| `web-ui-empty.png` | Month navigation with no entries |
+
+**One-time setup:**
 
 ```bash
-npx playwright screenshot --browser chromium \
-  "http://localhost:8080" docs/screenshots/web-ui-list.png
+pip install playwright
+python3 -m playwright install chromium
 ```
 
-For on-device e-ink screenshots once hardware is available, use the HTTP API:
+**Capture:**
+
+```bash
+# Save to docs/screenshots/ (default):
+python3 tools/screenshot_ui.py
+
+# Custom output directory or port:
+python3 tools/screenshot_ui.py --output-dir /tmp/shots --port 9292
+```
+
+### On-device e-ink screenshots
+
+Once hardware is available, the HTTP API returns a 1-bit BMP of the current
+framebuffer:
 
 ```bash
 curl -o docs/screenshots/eink-browse.bmp http://<device-ip>/api/display/screenshot.bmp
-# Convert to PNG with ImageMagick if needed:
+# Convert to PNG with ImageMagick:
 magick docs/screenshots/eink-browse.bmp docs/screenshots/eink-browse.png
 ```
 
