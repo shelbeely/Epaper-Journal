@@ -91,7 +91,7 @@ static bool runHealthChecks() {
         ok = false;
     }
     // 4. Wi-Fi connected (STA or AP)
-    if (WiFi.status() != WL_CONNECTED && WiFi.softAPgetStationNum() == 0) {
+    if (WiFi.status() != WL_CONNECTED && !(WiFi.getMode() & WIFI_AP)) {
         X4_LOGF(X4M_HEALTH_FAILED, "check=wifi");
         ok = false;
     }
