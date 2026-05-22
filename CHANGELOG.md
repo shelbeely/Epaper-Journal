@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Added `tools/serve_ota_manifest.py` to host OTA `manifest.json` + `firmware.bin` locally with computed SHA-256, and documented manifest setup/placeholder behavior.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

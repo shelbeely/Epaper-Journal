@@ -184,6 +184,14 @@ void test_result_string_manifest_parse_failed(void) {
                              OtaManager::resultString(OtaResult::MANIFEST_PARSE_FAILED));
 }
 
+void test_fetch_manifest_skips_http_when_url_is_placeholder(void) {
+    resetHTTPClientMock();
+    OtaManager ota;
+    OtaManifest m = ota.fetchManifest();
+    TEST_ASSERT_FALSE(m.valid);
+    TEST_ASSERT_EQUAL(0, g_http_begin_call_count);
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -223,6 +231,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_result_string_flash_failed);
     RUN_TEST(test_result_string_manifest_fetch_failed);
     RUN_TEST(test_result_string_manifest_parse_failed);
+    RUN_TEST(test_fetch_manifest_skips_http_when_url_is_placeholder);
 
     return UNITY_END();
 }

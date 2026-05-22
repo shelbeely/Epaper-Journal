@@ -86,6 +86,45 @@ pio run -e dev --target upload
 curl -X POST http://<device-ip>/api/dev/ota/apply
 ```
 
+### OTA manifest hosting (local)
+
+`src/config.h` ships with a placeholder `OTA_MANIFEST_URL`:
+
+```cpp
+#define OTA_MANIFEST_URL_PLACEHOLDER "https://updates.example.com/x4/manifest.json"
+```
+
+If this placeholder is still configured at boot, firmware logs:
+
+```text
+[X4:OTA_MANIFEST_NOT_CONFIGURED]
+```
+
+and skips OTA manifest checks until you configure a real URL.
+
+Host a manifest + binary locally with one command:
+
+```bash
+python3 tools/serve_ota_manifest.py --bin .pio/build/release/firmware.bin --version 0.2.0
+```
+
+The script serves:
+
+- `http://0.0.0.0:8080/manifest.json`
+- `http://0.0.0.0:8080/firmware.bin`
+
+Manifest schema:
+
+```json
+{"version":"0.2.0","url":"http://<host>:8080/firmware.bin","sha256":"<hex>","channel":"release"}
+```
+
+Set `OTA_MANIFEST_URL` (via `src/config.h` or `build_flags`) to your reachable host, for example:
+
+```ini
+-DOTA_MANIFEST_URL=\"http://192.168.4.2:8080/manifest.json\"
+```
+
 ## Monitoring Serial output
 
 ```bash
