@@ -64,6 +64,19 @@
 //    ::grid Label | Col1 | Col2   → MD_GRID_HEADER (first row)
 //    Row label    | x    | .      → MD_GRID_ROW (x=filled, .=empty box)
 //    (blank line or non-pipe exits grid mode)
+//
+// ── XJL Theme System extensions ──────────────────────────────────────────
+//  Yearly theme declaration (inverted bar + THEME badge):
+//    ::theme Year of Health        → MD_THEME
+//
+//  Seasonal review header (inverted bar + SEASON badge):
+//    ::season Spring 2026          → MD_SEASON
+//
+//  Daily alignment rating (N/5 label + five filled/empty boxes):
+//    ::rating 3                    → MD_RATING  (N clamped to 1–5)
+//
+//  Theme-aligned observation (tilde glyph in marker zone + text):
+//    ~ text                        → MD_THEME_NOTE
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <Arduino.h>
@@ -105,6 +118,11 @@ enum MdLineType : uint8_t {
     // ── XJL habit / data grid ────────────────────────────────────────────────
     MD_GRID_HEADER,     // ::grid Label | Col1 | Col2 ...
     MD_GRID_ROW,        // Row label | x | . | x  (x=filled, .=empty cell)
+    // ── XJL Theme System extensions ───────────────────────────────────────────
+    MD_THEME,           // ::theme <text>   → inverted bar + THEME badge
+    MD_SEASON,          // ::season <text>  → inverted bar + SEASON badge
+    MD_RATING,          // ::rating N       → N/5 label + five filled/empty boxes (1–5)
+    MD_THEME_NOTE,      // ~ text           → tilde glyph in marker zone + text
 };
 
 struct MdLine {
