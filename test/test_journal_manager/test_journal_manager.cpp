@@ -25,7 +25,15 @@
 #include <unity.h>
 #include <algorithm>
 
+static void setTestEpoch(time_t epoch) {
+    struct timeval tv = { epoch, 0 };
+    settimeofday(&tv, nullptr);
+}
+
 void setUp(void) {
+    setenv("TZ", "UTC", 1);
+    tzset();
+    Preferences::reset();
     SDCardManager::_stubReady = false;
     SDCardManager::_stubEnsureDir = false;
     SDCardManager::_stubWrite = false;
@@ -42,6 +50,9 @@ void setUp(void) {
     SDCardManager::_stubLastRenameDst = String("");
     SDCardManager::_stubRenameCallCount = 0;
     SDCardManager::_stubRemovedPaths.clear();
+    setMillis(0);
+    setMockConfigTimeEpoch(0);
+    setTestEpoch(0);
 }
 void tearDown(void) {}
 
@@ -428,6 +439,31 @@ void test_read_entry_for_export_forced_raw_keeps_ciphertext(void) {
 
     TEST_ASSERT_TRUE(ok);
     TEST_ASSERT_EQUAL_STRING(encrypted.c_str(), out.c_str());
+
+}
+
+// When the RTC is behind but a newer persisted epoch exists, listAllPaths must
+// still scan far enough ahead to include recent entries.
+void test_list_all_paths_uses_persisted_year_floor(void) {
+    Preferences prefs;
+    prefs.begin("system", false);
+    prefs.putUInt("last_epoch", 1779235200UL);  // 2026-05-19 00:00:00 UTC
+    prefs.end();
+
+    setTestEpoch(1704067200UL);  // 2024-01-01 00:00:00 UTC
+    SDCardManager::_stubReady = true;
+    SDCardManager::_stubListFilesByPath["/journal/2026/05/"] = {
+        "20260520-103000.md"
+    };
+
+    X4Storage storage;
+    X4Clock clock;
+    JournalManager jm(storage, clock, nullptr);
+    auto paths = jm.listAllPaths();
+
+    TEST_ASSERT_EQUAL(1, (int)paths.size());
+    TEST_ASSERT_EQUAL_STRING("/journal/2026/05/20260520-103000.md",
+                             paths[0].c_str());
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -456,6 +492,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_read_entry_for_export_encrypted_stays_raw_when_locked);
     RUN_TEST(test_read_entry_for_export_encrypted_decrypts_when_unlocked);
     RUN_TEST(test_read_entry_for_export_forced_raw_keeps_ciphertext);
+    RUN_TEST(test_list_all_paths_uses_persisted_year_floor);
 
     return UNITY_END();
 }

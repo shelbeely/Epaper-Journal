@@ -25,6 +25,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Web API now returns `503 {"error":"wifi_disabled"}` when Wi-Fi is disabled.
 
 ### Fixed
+- Retry NTP sync hourly while Wi-Fi is connected, persist the last-known-good epoch, and reuse it to keep journal entries visible after clock drift or failed sync.
 - OTA health check now treats an active soft-AP interface as healthy even when no clients are connected, preventing false rollback requests after flashing.
 - Journal entry saves are now atomic: writes go to a sibling `.tmp` file first and are renamed into place only after a successful write.
 - On boot, stale orphaned journal `.tmp` files are cleaned up from month directories.

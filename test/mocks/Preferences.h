@@ -48,6 +48,7 @@ public:
     static void clearStore() {
         _store.clear();
     }
+    static void reset() { clearStore(); }
 
     // Byte-array operations (used by VaultManager for salt storage)
     size_t getBytes(const char* key, void* out, size_t maxLen) {

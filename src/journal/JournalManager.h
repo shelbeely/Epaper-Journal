@@ -48,7 +48,8 @@ public:
     std::vector<String> listEntries(uint16_t year, uint8_t month);
 
     // List all entry paths across every year/month stored on the SD card.
-    // Returns paths sorted oldest-first (ascending). Searches 2020 → current year.
+    // Returns paths sorted oldest-first (ascending). Searches 2020 → effective
+    // current year, using the last persisted good clock epoch as a floor.
     std::vector<String> listAllPaths();
 
     // Search entry titles + first 500 chars of body for `query`, case-insensitive.
