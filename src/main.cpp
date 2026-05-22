@@ -26,6 +26,7 @@
 #include "ui/SleepScreen.h"
 #include "ui/CalendarScreen.h"
 #include "ui/SearchScreen.h"
+#include "ui/ThemeScreen.h"
 #include "ui/PinScreen.h"
 #include "ui/TitlePromptScreen.h"
 #include "vault/VaultManager.h"
@@ -50,6 +51,7 @@ static BrowseScreen   gBrowse(gJournalMgr, gDisplay, gInput, gClock,
 static EntryScreen    gEntryScreen(gDisplay, gInput, gSleepScreen);
 static CalendarScreen gCalendar(gJournalMgr, gDisplay, gInput, gClock);
 static SearchScreen   gSearchScreen(gJournalMgr, gDisplay, gInput, gSleepScreen);
+static ThemeScreen    gThemeScreen(gJournalMgr, gDisplay, gInput, gClock);
 static PinScreen      gPinScreen(gDisplay, gInput);
 
 static bool gSafeModeActive = false;
@@ -278,6 +280,8 @@ void loop() {
                 gEntryScreen.show(e);
             }
         }
+    } else if (result == BrowseResult::THEME) {
+        gThemeScreen.run();
     } else if (result == BrowseResult::VAULT_TOGGLE) {
         if (gVault.isUnlocked()) {
             gVault.lock();
