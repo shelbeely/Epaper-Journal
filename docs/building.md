@@ -229,28 +229,36 @@ Select **[ LOCK VAULT ]** to immediately zero the in-memory key.
 
 ### Vault HTTP API
 
-Three endpoints are always available when the device is on Wi-Fi:
+Four endpoints are always available when the device is on Wi-Fi:
 
 | Method | Path | Body | Description |
 |---|---|---|---|
 | `GET` | `/api/vault/status` | — | `{"locked": true/false}` |
-| `POST` | `/api/vault/unlock` | `{"pin":"1234"}` | Derive key and unlock; returns `{"ok": true}` |
+| `GET` | `/api/vault/challenge` | — | `{"nonce":"<64 hex chars>"}` — 32-byte single-use nonce (60 s TTL) |
+| `POST` | `/api/vault/unlock` | `{"response":"<hex(SHA256(nonce+pin))>"}` | Challenge-response unlock; returns `{"ok": true}` |
 | `POST` | `/api/vault/lock` | — | Zero the in-memory key; returns `{"ok": true}` |
 
 ```bash
 # Check vault state
 curl http://192.168.4.1/api/vault/status
 
-# Unlock (PIN "1234")
+# Unlock (PIN "1234") using challenge-response:
+NONCE=$(curl -s http://192.168.4.1/api/vault/challenge | python3 -c "import sys,json; print(json.load(sys.stdin)['nonce'])")
+RESPONSE=$(python3 -c "
+import hashlib, sys
+nonce = bytes.fromhex('$NONCE')
+pin   = b'1234'
+print(hashlib.sha256(nonce + pin).hexdigest())
+")
 curl -X POST http://192.168.4.1/api/vault/unlock \
      -H 'Content-Type: application/json' \
-     -d '{"pin":"1234"}'
+     -d "{\"response\":\"$RESPONSE\"}"
 
 # Lock
 curl -X POST http://192.168.4.1/api/vault/lock
 ```
 
-> **Security note:** The PIN travels over plain HTTP on the soft-AP network. Do not use the same PIN for anything else while the soft-AP is reachable to untrusted devices.
+> **Security note:** The challenge-response flow ensures the raw PIN is never transmitted over HTTP. The server-side nonce is single-use and expires after 60 seconds, preventing replay attacks.
 
 ### Locked entries in browse list
 

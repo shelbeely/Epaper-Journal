@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Security
+- Vault unlock now uses a challenge-response flow: `GET /api/vault/challenge`
+  returns a single-use 32-byte nonce; `POST /api/vault/unlock` accepts
+  `{"response":"<hex(SHA256(nonce+pin))>"}` so the raw PIN is never sent over
+  HTTP.  The server brute-forces the 4-digit space to match the response and
+  then derives the key, keeping PBKDF2 as the key-stretching primitive.
+- Web UI vault panel updated to perform the two-step unlock flow using the
+  Web Crypto API (`crypto.subtle.digest`).
+- Nonces are single-use and expire after 60 seconds.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

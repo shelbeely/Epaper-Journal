@@ -9,6 +9,8 @@
 #include "../journal/JournalManager.h"
 #include "../journal/JournalFrontmatter.h"
 #include "ui_bundle.h"
+#include "mbedtls/sha256.h"
+#include <esp_random.h>
 
 // ── LogRingBuffer ─────────────────────────────────────────────────────────────
 
@@ -264,9 +266,10 @@ void WebApi::_registerJournalRoutes() {
 }
 
 // ── Vault routes ──────────────────────────────────────────────────────────────
-//   GET  /api/vault/status  — {"locked": bool}
-//   POST /api/vault/unlock  — body {"pin":"1234"} → {"ok": bool}
-//   POST /api/vault/lock    — {} → {"ok": true}
+//   GET  /api/vault/status     — {"locked": bool}
+//   GET  /api/vault/challenge  — {"nonce":"<64 hex chars>"} (32-byte random)
+//   POST /api/vault/unlock     — body {"response":"<hex(SHA256(nonce+pin))>"}
+//   POST /api/vault/lock       — {} → {"ok": true}
 
 void WebApi::_registerVaultRoutes() {
     // GET /api/vault/status
@@ -279,6 +282,23 @@ void WebApi::_registerVaultRoutes() {
         req->send(200, "application/json", body);
     });
 
+    // GET /api/vault/challenge — generate a single-use 32-byte nonce (60s TTL)
+    _server.on("/api/vault/challenge", HTTP_GET,
+               [this](AsyncWebServerRequest* req) {
+        esp_fill_random(_challengeNonce, sizeof(_challengeNonce));
+        _challengeExpiry = (uint32_t)millis() + 60000UL;
+        _challengeActive = true;
+
+        char hexBuf[65];
+        for (int i = 0; i < 32; i++) {
+            snprintf(&hexBuf[i * 2], 3, "%02x", _challengeNonce[i]);
+        }
+        hexBuf[64] = '\0';
+
+        String body = String("{\"nonce\":\"") + hexBuf + "\"}";
+        req->send(200, "application/json", body);
+    });
+
     // POST /api/vault/lock
     _server.on("/api/vault/lock", HTTP_POST,
                [this](AsyncWebServerRequest* req) {
@@ -286,25 +306,95 @@ void WebApi::_registerVaultRoutes() {
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    // POST /api/vault/unlock — body: {"pin":"1234"}
+    // POST /api/vault/unlock — body: {"response":"<hex(SHA256(nonce+pin))>"}
+    // The raw PIN never travels in the request; the server brute-forces the
+    // 4-digit space (10 000 SHA-256 ops) to recover the PIN and derive the key.
     _server.on("/api/vault/unlock", HTTP_POST,
                [](AsyncWebServerRequest* req) { /* body handled below */ },
                nullptr,
                [this](AsyncWebServerRequest* req,
                       uint8_t* data, size_t len, size_t, size_t) {
+        // 1. Validate and consume the nonce immediately (single-use).
+        if (!_challengeActive ||
+            (uint32_t)millis() > _challengeExpiry) {
+            _challengeActive = false;
+            req->send(400, "application/json",
+                      "{\"ok\":false,\"error\":\"no active challenge\"}");
+            return;
+        }
+        _challengeActive = false;   // consume — one-time use
+
+        // 2. Parse the JSON body.
         JsonDocument doc;
         if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
             req->send(400, "application/json",
                       "{\"ok\":false,\"error\":\"invalid JSON\"}");
             return;
         }
-        const char* pin = doc["pin"] | "";
-        if (pin[0] == '\0') {
+        const char* responseHex = doc["response"] | "";
+        if (strlen(responseHex) != 64) {
             req->send(400, "application/json",
-                      "{\"ok\":false,\"error\":\"missing pin\"}");
+                      "{\"ok\":false,\"error\":\"missing or invalid response\"}");
             return;
         }
-        if (_vault.deriveKeyFromPin(pin)) {
+
+        // 3. Decode the 64-char hex response into 32 bytes.
+        uint8_t receivedHash[32];
+        for (int i = 0; i < 32; i++) {
+            char hi = responseHex[i * 2];
+            char lo = responseHex[i * 2 + 1];
+            auto hexVal = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return -1;
+            };
+            int hv = hexVal(hi), lv = hexVal(lo);
+            if (hv < 0 || lv < 0) {
+                req->send(400, "application/json",
+                          "{\"ok\":false,\"error\":\"invalid hex\"}");
+                return;
+            }
+            receivedHash[i] = (uint8_t)((hv << 4) | lv);
+        }
+
+        // 4. Brute-force the 4-digit PIN space: compute SHA256(nonce || pin)
+        //    for each candidate and compare.  10 000 SHA-256 calls is fast
+        //    (~10 ms on ESP32) and the nonce is single-use, preventing replay.
+        char matchedPin[5] = {'\0'};
+        uint8_t computed[32];
+        mbedtls_sha256_context sha_ctx;
+
+        for (int n = 0; n <= 9999; n++) {
+            char candidate[5];
+            snprintf(candidate, sizeof(candidate), "%04d", n);
+
+            mbedtls_sha256_init(&sha_ctx);
+            mbedtls_sha256_starts(&sha_ctx, 0);  // 0 = SHA-256
+            mbedtls_sha256_update(&sha_ctx, _challengeNonce,
+                                  sizeof(_challengeNonce));
+            mbedtls_sha256_update(&sha_ctx,
+                                  reinterpret_cast<const uint8_t*>(candidate),
+                                  4);
+            mbedtls_sha256_finish(&sha_ctx, computed);
+            mbedtls_sha256_free(&sha_ctx);
+
+            if (memcmp(computed, receivedHash, 32) == 0) {
+                memcpy(matchedPin, candidate, 5);
+                break;
+            }
+        }
+
+        // Zero out the nonce regardless of outcome.
+        memset(_challengeNonce, 0, sizeof(_challengeNonce));
+
+        if (matchedPin[0] == '\0') {
+            req->send(401, "application/json",
+                      "{\"ok\":false,\"error\":\"incorrect PIN\"}");
+            return;
+        }
+
+        if (_vault.deriveKeyFromPin(matchedPin)) {
             req->send(200, "application/json", "{\"ok\":true}");
         } else {
             req->send(500, "application/json",

@@ -56,6 +56,11 @@ private:
     VaultManager&  _vault;
     LogRingBuffer  _logs;
 
+    // Challenge-response nonce state (single-use, 60-second TTL).
+    uint8_t  _challengeNonce[32] = {};
+    uint32_t _challengeExpiry    = 0;   // millis() when nonce expires
+    bool     _challengeActive    = false;
+
     void _registerDisplayRoutes();
     void _registerJournalRoutes();
     void _registerVaultRoutes();
