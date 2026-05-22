@@ -23,9 +23,61 @@
 #include "system/X4Clock.cpp"           // NOLINT
 
 #include <unity.h>
+#include <string.h>
+#include <vector>
 
 void setUp(void)    {}
 void tearDown(void) {}
+
+static String makeLegacyCiphertext(const char* pin, const String& plaintext) {
+    uint8_t salt[16] = {0};
+    Preferences prefs;
+    prefs.begin("vault", false);
+    size_t n = prefs.getBytes("salt", salt, sizeof(salt));
+    prefs.end();
+    if (n != sizeof(salt)) return "";
+
+    uint8_t key[32] = {0};
+    mbedtls_md_context_t md_ctx;
+    mbedtls_md_init(&md_ctx);
+    const mbedtls_md_info_t* md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (mbedtls_md_setup(&md_ctx, md_info, 1) != 0) {
+        mbedtls_md_free(&md_ctx);
+        return "";
+    }
+
+    int rc = mbedtls_pkcs5_pbkdf2_hmac(
+        &md_ctx,
+        reinterpret_cast<const unsigned char*>(pin), strlen(pin),
+        salt, sizeof(salt),
+        10000,
+        sizeof(key), key);
+    mbedtls_md_free(&md_ctx);
+    if (rc != 0) return "";
+
+    const size_t ptLen = plaintext.length();
+    std::vector<uint8_t> blob(12 + 16 + ptLen);
+    uint8_t* nonce = blob.data();
+    uint8_t* tag   = blob.data() + 12;
+    uint8_t* ct    = blob.data() + 12 + 16;
+    memset(nonce, 0, 12);
+
+    mbedtls_gcm_context gcm;
+    mbedtls_gcm_init(&gcm);
+    mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, key, 256);
+    rc = mbedtls_gcm_crypt_and_tag(
+        &gcm, MBEDTLS_GCM_ENCRYPT, ptLen,
+        nonce, 12, nullptr, 0,
+        reinterpret_cast<const uint8_t*>(plaintext.c_str()), ct,
+        16, tag);
+    mbedtls_gcm_free(&gcm);
+    if (rc != 0) return "";
+
+    String result = VaultManager::VAULT_HEADER_V1;
+    result += b64Enc(blob.data(), blob.size());
+    result += "\n";
+    return result;
+}
 
 // ── labelFromFilename ─────────────────────────────────────────────────────────
 
@@ -109,6 +161,29 @@ void test_list_all_paths_empty_no_files(void) {
     SDCardManager::_stubReady = false;
 }
 
+void test_load_entry_migrates_legacy_vault_to_v2(void) {
+    SDCardManager::_stubReady = true;
+    SDCardManager::_stubWrite = true;
+    SDCardManager::_stubLastWritePath = "";
+    SDCardManager::_stubLastWriteContent = "";
+
+    X4Storage storage;
+    X4Clock clock;
+    VaultManager vault;
+    TEST_ASSERT_TRUE(vault.deriveKeyFromPin("1234"));
+
+    const String plain = "---\ntitle: Legacy\ndate: 2026-05-22 10:00:00\n---\nBody\n";
+    SDCardManager::_stubReadContent = makeLegacyCiphertext("1234", plain);
+    TEST_ASSERT_TRUE(SDCardManager::_stubReadContent.startsWith(VaultManager::VAULT_HEADER_V1));
+
+    JournalManager jm(storage, clock, &vault);
+    JournalEntry out;
+    TEST_ASSERT_TRUE(jm.loadEntry("/journal/2026/05/20260522-100000.md", out));
+    TEST_ASSERT_FALSE(out.locked);
+    TEST_ASSERT_EQUAL_STRING("Legacy", out.title.c_str());
+    TEST_ASSERT_TRUE(SDCardManager::_stubLastWriteContent.startsWith(VaultManager::VAULT_HEADER_V2));
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -124,6 +199,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_label_filename_no_extension);
     RUN_TEST(test_list_all_paths_empty_when_not_ready);
     RUN_TEST(test_list_all_paths_empty_no_files);
+    RUN_TEST(test_load_entry_migrates_legacy_vault_to_v2);
 
     return UNITY_END();
 }

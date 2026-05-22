@@ -22,6 +22,8 @@ public:
     static bool _stubEnsureDir;       // return value for ensureDirectoryExists()
     static bool _stubWrite;           // return value for writeFile()
     static String _stubReadContent;   // return value for readFile()
+    static String _stubLastWritePath;
+    static String _stubLastWriteContent;
 
     bool begin()        { return false; }
     bool ready() const  { return _stubReady; }
@@ -37,7 +39,9 @@ public:
                             size_t /*bufSize*/, size_t /*maxBytes*/ = 0) {
         return 0;
     }
-    bool writeFile(const char* /*path*/, const String& /*content*/) {
+    bool writeFile(const char* path, const String& content) {
+        _stubLastWritePath = path ? path : "";
+        _stubLastWriteContent = content;
         return _stubWrite;
     }
     bool ensureDirectoryExists(const char* /*path*/) { return _stubEnsureDir; }
@@ -81,6 +85,8 @@ inline bool   SDCardManager::_stubReady        = false;
 inline bool   SDCardManager::_stubEnsureDir    = false;
 inline bool   SDCardManager::_stubWrite        = false;
 inline String SDCardManager::_stubReadContent;
+inline String SDCardManager::_stubLastWritePath;
+inline String SDCardManager::_stubLastWriteContent;
 
 // Match the macro from the real SDCardManager.h
 #define SdMan SDCardManager::getInstance()

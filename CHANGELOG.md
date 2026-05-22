@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Security
+- Increased vault PIN key-derivation cost to PBKDF2-SHA256 with 100,000 iterations for new vault ciphertext.
+- Added legacy vault migration so `---vault-v1---` (10k-iteration) content is transparently re-encrypted as `---vault-v2---` after successful unlock.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
